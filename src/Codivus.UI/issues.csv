@@ -1,0 +1,14 @@
+Description,Filename
+Inconsistent error handling across API calls,/src/services/api.js
+Accessibility issues - missing keyboard navigation and ARIA attributes,/src/components/repository/FileTreeItem.vue
+Performance bottleneck with large file trees due to lack of virtualization,/src/components/repository/FileTreeItem.vue
+API request timeout fixed at 30 seconds may be insufficient for large repos,/src/services/api.js
+Security vulnerability - settings stored in localStorage without encryption,/src/store/settings.js
+Incomplete error state UI for displaying errors to users,/src/store/repository.js,/src/store/scanning.js
+Missing consistent loading state indicators across views,Various view components
+Potential race condition in scanning store during concurrent operations,/src/store/scanning.js
+Inconsistent notification pattern across the application,/src/components/common/Notification.vue
+Missing form validation strategy,Various view components with forms
+Inconsistent fallback logic in getScanProgress method,/src/services/api.js
+Missing route parameter validation before API calls,/src/views/RepositoryDetailsView.vue,/src/views/ScanDetailsView.vue
+Authentication checks or route guards not implemented,/src/router.js
