@@ -43,7 +43,16 @@
         :disabled="operationLoading.canceling"
       >
         <span class="mdi" :class="operationLoading.canceling ? 'mdi-loading mdi-spin' : 'mdi-stop'"></span> 
-        {{ operationLoading.canceling ? 'Canceling...' : 'Cancel Scan' }}
+        {{ operationLoading.canceling ? 'Canceling...' : 'Cancel' }}
+      </button>
+      <button 
+        v-if="scan?.status === 'Completed' || scan?.status === 'Failed' || scan?.status === 'Canceled'"
+        class="btn btn-danger" 
+        @click="$emit('delete-scan')"
+        :disabled="operationLoading.deleting"
+      >
+        <span class="mdi" :class="operationLoading.deleting ? 'mdi-loading mdi-spin' : 'mdi-delete'"></span> 
+        {{ operationLoading.deleting ? 'Deleting...' : 'Delete' }}
       </button>
       <button 
         class="btn btn-secondary"
@@ -79,6 +88,7 @@ defineProps({
       pausing: false,
       resuming: false,
       canceling: false,
+      deleting: false,
       refreshing: false
     })
   }
@@ -88,6 +98,7 @@ defineEmits([
   'pause-scan',
   'resume-scan', 
   'cancel-scan',
+  'delete-scan',
   'refresh-data',
   'go-back'
 ])

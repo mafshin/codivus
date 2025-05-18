@@ -18,7 +18,7 @@
       <div class="code-header">
         <div class="file-info">
           <span class="mdi mdi-file-document-outline"></span>
-          <span class="file-name">{{ fileName }}</span>
+          <span class="file-name">{{ displayFileName }}</span>
           <span v-if="fileSize" class="file-size">({{ formatFileSize(fileSize) }})</span>
         </div>
         <div class="code-actions">
@@ -65,7 +65,7 @@
         <div class="issue-detail-content" @click.stop>
           <div class="issue-detail-header">
             <div class="issue-meta">
-              <span class="severity-badge" :class="`severity-${(selectedIssue.severity || 'unknown').toLowerCase()}`">
+              <span class="severity-badge" :class="`severity-${getSeverityClass(selectedIssue.severity)}`">
                 {{ selectedIssue.severity }}
               </span>
               <span class="category-badge">{{ selectedIssue.category }}</span>
@@ -108,7 +108,7 @@
         v-for="issue in issuesInFile" 
         :key="`tooltip-${issue.id || issue.lineNumber}`"
         class="issue-tooltip"
-        :class="`severity-${(issue.severity || 'unknown').toLowerCase()}`"
+        :class="`severity-${getSeverityClass(issue.severity)}`"
         :style="getIssueTooltipPosition(issue)"
         v-show="hoveredLine === issue.lineNumber && !selectedIssue"
       >
@@ -176,6 +176,11 @@ const hoveredLine = ref(null)
 const selectedIssue = ref(null)
 
 // Computed properties
+const displayFileName = computed(() => {
+  // Extract just the filename from the full path
+  return props.fileName?.split('/').pop() || props.fileName || 'Unknown File'
+})
+
 const lineCount = computed(() => {
   return props.fileContent ? props.fileContent.split('\n').length : 0
 })
@@ -238,6 +243,14 @@ const highlightedCode = computed(() => {
   }
 })
 
+// Helper function to safely get severity class
+function getSeverityClass(severity) {
+  if (!severity) return 'unknown'
+  const severityStr = String(severity).toLowerCase()
+  // Ensure it's a valid CSS class name
+  return severityStr.replace(/[^a-z0-9-]/g, '-')
+}
+
 // Methods
 function getLineClasses(lineNumber) {
   const hasIssue = issuesInFile.value.some(issue => issue.lineNumber === lineNumber)
@@ -285,7 +298,7 @@ function downloadFile() {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = props.fileName.split('/').pop()
+  a.download = displayFileName
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

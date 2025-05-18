@@ -159,6 +159,42 @@ export default {
     return apiClient.post(`/scanning/${scanId}/cancel`)
   },
   
+  deleteScan(scanId) {
+    console.log('API: Calling deleteScan with scanId:', scanId)
+    console.log('API: URL will be:', `/scanning/${scanId}`)
+    
+    // Try the main delete endpoint
+    return apiClient.delete(`/scanning/${scanId}`)
+      .then(response => {
+        console.log('API: Delete scan response:', {
+          status: response.status,
+          statusText: response.statusText
+        })
+        return response
+      })
+      .catch(error => {
+        console.error('API: Delete scan error (first attempt):', {
+          message: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          url: error.config?.url,
+          method: error.config?.method,
+          data: error.response?.data
+        })
+        
+        // If we get a 404, it might be that the endpoint is wrong
+        // Let's log all the information we can
+        if (error.response?.status === 404) {
+          console.log('API: 404 error - endpoint might not exist')
+          console.log('API: Full error details:', error.response)
+          console.log('API: Base URL:', apiClient.defaults.baseURL)
+          console.log('API: Full URL attempted:', error.config?.url)
+        }
+        
+        throw error
+      })
+  },
+  
   getScanIssues(scanId) {
     return apiClient.get(`/scanning/${scanId}/issues`)
   },

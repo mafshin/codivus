@@ -51,6 +51,13 @@ public interface IScanningService
     Task<bool> CancelScanAsync(Guid scanId);
     
     /// <summary>
+    /// Deletes a scan and all its related issues
+    /// </summary>
+    /// <param name="scanId">Scan ID</param>
+    /// <returns>True if successful, false otherwise</returns>
+    Task<bool> DeleteScanAsync(Guid scanId);
+    
+    /// <summary>
     /// Gets issues found in a scan
     /// </summary>
     /// <param name="scanId">Scan ID</param>

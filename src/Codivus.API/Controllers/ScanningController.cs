@@ -235,6 +235,46 @@ public class ScanningController : ControllerBase
     }
 
     /// <summary>
+    /// Deletes a scan and all its related issues
+    /// </summary>
+    /// <param name="scanId">Scan ID</param>
+    /// <returns>No content if successful</returns>
+    [HttpDelete("{scanId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> DeleteScan(Guid scanId)
+    {
+        try
+        {
+            var scanProgress = await _scanningService.GetScanProgressAsync(scanId);
+            if (scanProgress == null)
+            {
+                return NotFound($"Scan with ID {scanId} not found");
+            }
+
+            // Prevent deletion of active scans
+            if (scanProgress.Status == ScanStatus.InProgress || scanProgress.Status == ScanStatus.Initializing)
+            {
+                return BadRequest($"Cannot delete scan with status {scanProgress.Status}. Please cancel the scan first.");
+            }
+
+            var result = await _scanningService.DeleteScanAsync(scanId);
+            if (!result)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, "Failed to delete the scan");
+            }
+
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting scan {ScanId}", scanId);
+            return StatusCode(StatusCodes.Status500InternalServerError, "An error occurred while deleting the scan");
+        }
+    }
+
+    /// <summary>
     /// Gets issues found in a scan
     /// </summary>
     /// <param name="scanId">Scan ID</param>

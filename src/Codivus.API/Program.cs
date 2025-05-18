@@ -1,4 +1,3 @@
-using Codivus.API.Analyzers;
 using Codivus.API.Data;
 using Codivus.API.LLM;
 using Codivus.API.Middleware;
@@ -63,7 +62,6 @@ builder.Services.AddSingleton<JsonDataStore>();
 builder.Services.AddSingleton<IFileSystem, FileSystem>();
 builder.Services.AddSingleton<IRepositoryService, RepositoryService>();
 builder.Services.AddSingleton<IScanningService, ScanningService>();
-builder.Services.AddSingleton<IIssueHunterAnalyzer, IssueHunterAnalyzer>();
 
 // Register LLM providers
 builder.Services.AddTransient<ILlmProvider, OllamaProvider>();

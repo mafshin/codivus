@@ -10,15 +10,18 @@ public class ScanningService : IScanningService
     private readonly ILogger<ScanningService> _logger;
     private readonly IRepositoryService _repositoryService;
     private readonly JsonDataStore _dataStore;
+    private readonly ILlmProvider _llmProvider;
 
     public ScanningService(
         ILogger<ScanningService> logger,
         IRepositoryService repositoryService,
-        JsonDataStore dataStore)
+        JsonDataStore dataStore,
+        ILlmProvider llmProvider)
     {
         _logger = logger;
         _repositoryService = repositoryService;
         _dataStore = dataStore;
+        _llmProvider = llmProvider;
     }
 
     public async Task<ScanProgress> StartScanAsync(Guid repositoryId, ScanConfiguration configuration)
@@ -157,6 +160,38 @@ public class ScanningService : IScanningService
         
         _logger.LogInformation("Scan {ScanId} canceled", scanId);
         return true;
+    }
+
+    public async Task<bool> DeleteScanAsync(Guid scanId)
+    {
+        var scanProgress = await _dataStore.GetScanAsync(scanId);
+        if (scanProgress == null)
+        {
+            _logger.LogWarning("Attempt to delete non-existent scan {ScanId}", scanId);
+            return false;
+        }
+
+        // Prevent deletion of active scans
+        if (scanProgress.Status == ScanStatus.InProgress || scanProgress.Status == ScanStatus.Initializing)
+        {
+            _logger.LogWarning("Cannot delete scan {ScanId} - scan is currently {Status}", scanId, scanProgress.Status);
+            return false;
+        }
+
+        // Delete the scan and all its related issues
+        var result = await _dataStore.DeleteScanWithIssuesAsync(scanId);
+        
+        if (result)
+        {
+            _logger.LogInformation("Successfully deleted scan {ScanId} for repository {RepositoryId}", 
+                scanId, scanProgress.RepositoryId);
+        }
+        else
+        {
+            _logger.LogError("Failed to delete scan {ScanId}", scanId);
+        }
+        
+        return result;
     }
 
     public async Task<IEnumerable<CodeIssue>> GetScanIssuesAsync(Guid scanId)
@@ -448,6 +483,45 @@ public class ScanningService : IScanningService
     }
     
     /// <summary>
+    /// Convert a file path to a relative path from repository root
+    /// </summary>
+    private async Task<string> GetRelativeFilePath(string fullPath, Guid repositoryId)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+        {
+            return fullPath;
+        }
+        
+        try
+        {
+            // Get the repository to find the root path
+            var repository = await _repositoryService.GetRepositoryByIdAsync(repositoryId);
+            if (repository == null || string.IsNullOrWhiteSpace(repository.Location))
+            {
+                return fullPath;
+            }
+            
+            var rootPath = repository.Location.TrimEnd('/', '\\');
+            var normalizedFullPath = fullPath.Replace('\\', '/');
+            var normalizedRootPath = rootPath.Replace('\\', '/');
+            
+            // Remove the repository root path from the file path
+            if (normalizedFullPath.StartsWith(normalizedRootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                var relativePath = normalizedFullPath.Substring(normalizedRootPath.Length).TrimStart('/', '\\');
+                return string.IsNullOrWhiteSpace(relativePath) ? fullPath : relativePath;
+            }
+            
+            return fullPath;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting relative path for {FilePath}", fullPath);
+            return fullPath;
+        }
+    }
+    
+    /// <summary>
     /// Collect all files to scan based on configuration
     /// </summary>
     private List<RepositoryFile> CollectFilesToScanAsync(RepositoryFile repoStructure, ScanConfiguration configuration)
@@ -556,9 +630,9 @@ public class ScanningService : IScanningService
     }
     
     /// <summary>
-    /// Analyze a file to find code issues
+    /// Analyze a file to find code issues using the configured LLM provider
     /// </summary>
-    private async Task<List<CodeIssue>> AnalyzeFileAsync(RepositoryFile file, string content, ScanConfiguration configuration, Guid scanId)
+    private async Task<IEnumerable<CodeIssue>> AnalyzeFileAsync(RepositoryFile file, string content, ScanConfiguration configuration, Guid scanId)
     {
         var issues = new List<CodeIssue>();
         
@@ -575,422 +649,77 @@ public class ScanningService : IScanningService
             return issues;
         }
         
-        // Prepare for analysis
-        var lines = content.Split('\n');
-        var extension = Path.GetExtension(file.Path).ToLowerInvariant();
-        
-        // Create a list to collect issues
-        var detectedIssues = new List<CodeIssue>();
-        
-        // For large files, do some async work to avoid blocking the thread
-        if (content.Length > 100000) // For files larger than ~100KB
+        try
         {
-            await Task.Delay(1); // Minimal delay to make this truly async
-        }
-        
-        // Perform basic analysis based on file type
-        if (extension == ".cs" || extension == ".java" || extension == ".js" || extension == ".ts")
-        {
-            // Check for code quality issues
-            if (configuration.IncludeCategories.Contains(IssueCategory.Quality))
+
+            // Check if LLM provider is available
+            if (_llmProvider == null || !await _llmProvider.IsAvailableAsync())
             {
-                detectedIssues.AddRange(AnalyzeCodeQuality(file, lines, scanId));
+                _logger.LogWarning("LLM provider is not available for file {FilePath}", file.Path);
+                return await Task.FromResult(Enumerable.Empty<CodeIssue>());
             }
             
-            // Check for security issues
-            if (configuration.IncludeCategories.Contains(IssueCategory.Security))
-            {
-                detectedIssues.AddRange(AnalyzeSecurityIssues(file, lines, scanId));
-            }
-        }
-        else if (extension == ".csproj" || extension == ".vbproj" || extension == ".fsproj" || extension == ".xml")
-        {
-            // Check for dependency issues
-            if (configuration.IncludeCategories.Contains(IssueCategory.Dependency))
-            {
-                detectedIssues.AddRange(AnalyzeDependencyIssues(file, lines, scanId));
-            }
-        }
-        
-        // Filter issues by minimum severity
-        var filteredIssues = detectedIssues.Where(issue => issue.Severity >= configuration.MinimumSeverity).ToList();
-        
-        // Generate suggested fixes if enabled
-        if (configuration.SuggestFixes && configuration.UseAi && filteredIssues.Any())
-        {
-            // This would use AI to suggest fixes, but for now we'll just add placeholder suggestions
-            foreach (var issue in filteredIssues)
-            {
-                issue.SuggestedFix = $"// Suggested fix for {issue.Title}\n// Would be generated by AI";
-            }
-        }
-        
-        return filteredIssues;
-    }
-    
-    /// <summary>
-    /// Analyze code quality issues
-    /// </summary>
-    private List<CodeIssue> AnalyzeCodeQuality(RepositoryFile file, string[] lines, Guid scanId)
-    {
-        var issues = new List<CodeIssue>();
-        
-        // Check for long methods (> 50 lines)
-        int methodStartLine = -1;
-        int braceCount = 0;
-        string methodName = "";
-        
-        for (int i = 0; i < lines.Length; i++)
-        {
-            var line = lines[i].Trim();
+            _logger.LogDebug("Starting LLM analysis for file {FilePath}", file.Path);
             
-            // Look for method declarations
-            if ((line.Contains("void ") || line.Contains("async ") || line.Contains("Task ") || 
-                 line.Contains("string ") || line.Contains("int ") || line.Contains("bool ")) && 
-                line.Contains("(") && !line.Contains(";") && methodStartLine == -1)
-            {
-                methodStartLine = i;
-                methodName = line.Contains("(") ? line.Substring(0, line.IndexOf('(')).Trim().Split(' ').Last() : "Unknown";
-            }
+            // Analyze file using LLM provider
+            var detectedIssues = await _llmProvider.AnalyzeCodeAsync(content, file.Path, configuration, scanId);
             
-            // Count braces to detect method boundaries
-            if (line.Contains("{"))
+            // Convert to list and ensure all issues have correct metadata
+            var issuesList = detectedIssues.ToList();
+            foreach (var issue in issuesList)
             {
-                braceCount++;
-            }
-            
-            if (line.Contains("}"))
-            {
-                braceCount--;
+                // Ensure issue has correct scan and repository IDs
+                issue.ScanId = scanId;
+                issue.RepositoryId = file.RepositoryId;
+                // Store relative path instead of full path
+                issue.FilePath = await GetRelativeFilePath(file.Path, file.RepositoryId);
+                issue.DetectedAt = DateTime.UtcNow;
                 
-                // Method ended, check if it was too long
-                if (braceCount == 0 && methodStartLine != -1)
+                // Set detection method to AI if not already set
+                if (issue.DetectionMethod == default)
                 {
-                    int methodLength = i - methodStartLine + 1;
-                    if (methodLength > 50)
-                    {
-                        issues.Add(new CodeIssue
-                        {
-                            Id = Guid.NewGuid(),
-                            ScanId = scanId,
-                            RepositoryId = file.RepositoryId,
-                            FilePath = file.Path,
-                            LineNumber = methodStartLine + 1, // 1-based for display
-                            ColumnNumber = 1,
-                            LineSpan = methodLength,
-                            Title = $"Method '{methodName}' is too long ({methodLength} lines)",
-                            Description = $"Long methods are harder to understand and maintain. Consider refactoring '{methodName}' into smaller, focused methods.",
-                            Severity = IssueSeverity.Medium,
-                            Category = IssueCategory.Quality,
-                            Confidence = 0.9,
-                            CodeSnippet = string.Join("\n", lines.Skip(methodStartLine).Take(Math.Min(15, methodLength))),
-                            DetectionMethod = IssueDetectionMethod.Static,
-                            DetectedAt = DateTime.UtcNow
-                        });
-                    }
-                    
-                    methodStartLine = -1;
-                    methodName = "";
+                    issue.DetectionMethod = IssueDetectionMethod.AiAnalysis;
                 }
             }
             
-            // Check for magic numbers
-            if (line.Contains("= ") && !line.Contains("==") && !line.Contains(">=") && !line.Contains("<="))
+            // Filter issues by minimum severity
+            var filteredIssues = issuesList.Where(issue => issue.Severity >= configuration.MinimumSeverity).ToList();
+            
+            // Generate suggested fixes if enabled and issues were found
+            if (configuration.SuggestFixes && filteredIssues.Any())
             {
-                var parts = line.Split(new[] { '=' }, 2);
-                if (parts.Length > 1)
+                _logger.LogDebug("Generating fix suggestions for {IssueCount} issues in file {FilePath}", 
+                    filteredIssues.Count, file.Path);
+                
+                foreach (var issue in filteredIssues)
                 {
-                    var value = parts[1].Trim().TrimEnd(';', ')');
-                    if (int.TryParse(value, out int number) && number != 0 && number != 1 && number != -1)
+                    // Only generate fix if not already provided by the LLM
+                    if (string.IsNullOrWhiteSpace(issue.SuggestedFix))
                     {
-                        issues.Add(new CodeIssue
+                        try
                         {
-                            Id = Guid.NewGuid(),
-                            ScanId = scanId,
-                            RepositoryId = file.RepositoryId,
-                            FilePath = file.Path,
-                            LineNumber = i + 1, // 1-based for display
-                            ColumnNumber = line.IndexOf('=') + 1,
-                            LineSpan = 1,
-                            Title = $"Magic number detected: {number}",
-                            Description = $"Using unnamed magic numbers makes code harder to understand and maintain. Consider defining a named constant instead of '{number}'.",
-                            Severity = IssueSeverity.Low,
-                            Category = IssueCategory.Quality,
-                            Confidence = 0.7,
-                            CodeSnippet = line,
-                            DetectionMethod = IssueDetectionMethod.Static,
-                            DetectedAt = DateTime.UtcNow
-                        });
+                            issue.SuggestedFix = await _llmProvider.GenerateFixSuggestionAsync(issue, content);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to generate fix suggestion for issue {IssueId} in file {FilePath}", 
+                                issue.Id, file.Path);
+                            // Keep the issue but without a suggested fix
+                        }
                     }
                 }
             }
+            
+            issues.AddRange(filteredIssues);
+            
+            _logger.LogDebug("Completed LLM analysis for file {FilePath}, found {IssueCount} issues", 
+                file.Path, filteredIssues.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during LLM analysis of file {FilePath}", file.Path);
         }
         
         return issues;
-    }
-    
-    /// <summary>
-    /// Analyze security issues
-    /// </summary>
-    private List<CodeIssue> AnalyzeSecurityIssues(RepositoryFile file, string[] lines, Guid scanId)
-    {
-        var issues = new List<CodeIssue>();
-        
-        for (int i = 0; i < lines.Length; i++)
-        {
-            var line = lines[i].Trim();
-            
-            // Check for hard-coded credentials
-            if ((line.Contains("password") || line.Contains("passwd") || line.Contains("pwd") || 
-                 line.Contains("secret") || line.Contains("token")) && 
-                line.Contains("=") && (line.Contains("\"") || line.Contains("'")))
-            {
-                issues.Add(new CodeIssue
-                {
-                    Id = Guid.NewGuid(),
-                    ScanId = scanId,
-                    RepositoryId = file.RepositoryId,
-                    FilePath = file.Path,
-                    LineNumber = i + 1, // 1-based for display
-                    ColumnNumber = 1,
-                    LineSpan = 1,
-                    Title = "Possible hard-coded credentials",
-                    Description = "Hard-coded credentials are a security risk. Consider using environment variables, a secure credential store, or a secret management service.",
-                    Severity = IssueSeverity.High,
-                    Category = IssueCategory.Security,
-                    Confidence = 0.8,
-                    CodeSnippet = line,
-                    DetectionMethod = IssueDetectionMethod.Static,
-                    DetectedAt = DateTime.UtcNow
-                });
-            }
-            
-            // Check for SQL injection
-            if ((line.Contains("ExecuteQuery") || line.Contains("ExecuteSql") || line.Contains("SqlCommand")) && 
-                line.Contains("+") && !line.Contains("Parameters"))
-            {
-                issues.Add(new CodeIssue
-                {
-                    Id = Guid.NewGuid(),
-                    ScanId = scanId,
-                    RepositoryId = file.RepositoryId,
-                    FilePath = file.Path,
-                    LineNumber = i + 1, // 1-based for display
-                    ColumnNumber = 1,
-                    LineSpan = 1,
-                    Title = "Potential SQL injection vulnerability",
-                    Description = "String concatenation in SQL queries can lead to SQL injection vulnerabilities. Use parameterized queries instead.",
-                    Severity = IssueSeverity.Critical,
-                    Category = IssueCategory.Security,
-                    Confidence = 0.85,
-                    CodeSnippet = line,
-                    DetectionMethod = IssueDetectionMethod.Static,
-                    DetectedAt = DateTime.UtcNow
-                });
-            }
-        }
-        
-        return issues;
-    }
-    
-    /// <summary>
-    /// Analyze dependency issues
-    /// </summary>
-    private List<CodeIssue> AnalyzeDependencyIssues(RepositoryFile file, string[] lines, Guid scanId)
-    {
-        var issues = new List<CodeIssue>();
-        
-        // Look for old package references
-        for (int i = 0; i < lines.Length; i++)
-        {
-            var line = lines[i].Trim();
-            
-            if (line.Contains("<PackageReference") && line.Contains("Version="))
-            {
-                // Extract package name and version
-                string packageName = "";
-                string version = "";
-                
-                var includeMatch = System.Text.RegularExpressions.Regex.Match(line, "Include=\"([^\"]+)\"");
-                if (includeMatch.Success)
-                {
-                    packageName = includeMatch.Groups[1].Value;
-                }
-                
-                var versionMatch = System.Text.RegularExpressions.Regex.Match(line, "Version=\"([^\"]+)\"");
-                if (versionMatch.Success)
-                {
-                    version = versionMatch.Groups[1].Value;
-                }
-                
-                // Flag old versions of Microsoft packages
-                if (!string.IsNullOrEmpty(packageName) && !string.IsNullOrEmpty(version) && 
-                    packageName.StartsWith("Microsoft.") && version.StartsWith("1.") && !version.StartsWith("1.9"))
-                {
-                    issues.Add(new CodeIssue
-                    {
-                        Id = Guid.NewGuid(),
-                        ScanId = scanId,
-                        RepositoryId = file.RepositoryId,
-                        FilePath = file.Path,
-                        LineNumber = i + 1, // 1-based for display
-                        ColumnNumber = 1,
-                        LineSpan = 1,
-                        Title = $"Outdated package reference: {packageName} {version}",
-                        Description = $"The package {packageName} is using an outdated version ({version}). Consider updating to a newer version for bug fixes, security updates, and improved features.",
-                        Severity = IssueSeverity.Medium,
-                        Category = IssueCategory.Dependency,
-                        Confidence = 0.9,
-                        CodeSnippet = line,
-                        DetectionMethod = IssueDetectionMethod.Static,
-                        DetectedAt = DateTime.UtcNow
-                    });
-                }
-            }
-        }
-        
-        return issues;
-    }
-
-    /// <summary>
-    /// Generates a random issue for testing purposes
-    /// </summary>
-    private CodeIssue GenerateRandomIssue(Guid repositoryId, Guid scanId)
-    {
-        var random = new Random();
-        var categories = Enum.GetValues<IssueCategory>();
-        var severities = Enum.GetValues<IssueSeverity>();
-        var detectionMethods = Enum.GetValues<IssueDetectionMethod>();
-
-        var category = categories[random.Next(categories.Length)];
-        var severity = severities[random.Next(severities.Length)];
-        var method = detectionMethods[random.Next(detectionMethods.Length)];
-
-        return new CodeIssue
-        {
-            Id = Guid.NewGuid(),
-            ScanId = scanId,
-            RepositoryId = repositoryId,
-            FilePath = $"src/file{random.Next(1, 100)}.cs",
-            LineNumber = random.Next(1, 500),
-            ColumnNumber = random.Next(1, 80),
-            LineSpan = random.Next(1, 10),
-            Title = GetRandomIssueTitle(category),
-            Description = "This is a simulated issue description for testing purposes.",
-            Severity = severity,
-            Category = category,
-            Confidence = random.NextDouble() * 0.5 + 0.5, // 0.5 to 1.0
-            CodeSnippet = "// Code snippet would be shown here",
-            SuggestedFix = "// Suggested fix would be shown here",
-            DetectionMethod = method,
-            DetectedAt = DateTime.UtcNow
-        };
-    }
-
-    private string GetRandomIssueTitle(IssueCategory category)
-    {
-        var random = new Random();
-        
-        switch (category)
-        {
-            case IssueCategory.Security:
-                var securityTitles = new[]
-                {
-                    "Potential SQL Injection vulnerability",
-                    "Insecure cryptographic algorithm usage",
-                    "Cross-site scripting (XSS) vulnerability",
-                    "Hard-coded credentials",
-                    "Insecure random number generation"
-                };
-                return securityTitles[random.Next(securityTitles.Length)];
-                
-            case IssueCategory.Performance:
-                var performanceTitles = new[]
-                {
-                    "Inefficient loop implementation",
-                    "Excessive memory allocation",
-                    "Redundant computation in hot path",
-                    "Unnecessary object creation",
-                    "Inefficient string concatenation"
-                };
-                return performanceTitles[random.Next(performanceTitles.Length)];
-                
-            case IssueCategory.Quality:
-                var qualityTitles = new[]
-                {
-                    "Method is too complex (high cyclomatic complexity)",
-                    "Class has too many responsibilities",
-                    "Duplicated code block",
-                    "Magic number usage",
-                    "Inconsistent naming convention"
-                };
-                return qualityTitles[random.Next(qualityTitles.Length)];
-                
-            case IssueCategory.Architecture:
-                var architectureTitles = new[]
-                {
-                    "Circular dependency detected",
-                    "Violation of dependency inversion principle",
-                    "Service has too many dependencies",
-                    "Excessive use of static methods",
-                    "Interface segregation principle violation"
-                };
-                return architectureTitles[random.Next(architectureTitles.Length)];
-                
-            case IssueCategory.Dependency:
-                var dependencyTitles = new[]
-                {
-                    "Outdated package with security vulnerabilities",
-                    "Conflicting package versions",
-                    "Multiple packages with similar functionality",
-                    "Unused dependency",
-                    "Transitive dependency with potential license issue"
-                };
-                return dependencyTitles[random.Next(dependencyTitles.Length)];
-                
-            case IssueCategory.Testing:
-                var testingTitles = new[]
-                {
-                    "Insufficient test coverage",
-                    "Test depends on external resources",
-                    "Flaky test detected",
-                    "Test logic is too complex",
-                    "Missing assertion in test"
-                };
-                return testingTitles[random.Next(testingTitles.Length)];
-                
-            case IssueCategory.Documentation:
-                var documentationTitles = new[]
-                {
-                    "Missing XML documentation for public API",
-                    "Outdated documentation",
-                    "Documentation doesn't match implementation",
-                    "Unclear parameter description",
-                    "Missing exception documentation"
-                };
-                return documentationTitles[random.Next(documentationTitles.Length)];
-                
-            case IssueCategory.Accessibility:
-                var accessibilityTitles = new[]
-                {
-                    "Missing ARIA attributes",
-                    "Insufficient color contrast",
-                    "No alt text for image",
-                    "Keyboard navigation not supported",
-                    "Missing screen reader support"
-                };
-                return accessibilityTitles[random.Next(accessibilityTitles.Length)];
-                
-            default:
-                var otherTitles = new[]
-                {
-                    "Potential issue detected",
-                    "Code smell detected",
-                    "Unusual pattern usage",
-                    "Possible bug detected",
-                    "Optimization opportunity"
-                };
-                return otherTitles[random.Next(otherTitles.Length)];
-        }
     }
 }

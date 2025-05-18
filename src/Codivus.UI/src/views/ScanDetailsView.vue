@@ -26,6 +26,7 @@
         @pause-scan="pauseScan"
         @resume-scan="resumeScan"
         @cancel-scan="cancelScan"
+        @delete-scan="deleteScan"
         @refresh-data="refreshData"
         @go-back="goBack"
       />
@@ -120,7 +121,6 @@ const scanConfig = ref(null)
 const issueSearchQuery = ref('')
 const issueSeverityFilter = ref('all')
 const issueCategoryFilter = ref('all')
-const refreshInterval = ref(null)
 
 // File tree and sidebar state
 const sidebarCollapsed = ref(false)
@@ -142,6 +142,7 @@ const operationLoading = ref({
   pausing: false,
   resuming: false,
   canceling: false,
+  deleting: false,
   refreshing: false
 })
 
@@ -162,14 +163,9 @@ onMounted(async () => {
   window.addEventListener('offline', handleOffline)
   
   await fetchScanDetails()
-  
-  // Start automatic refresh for active scans
-  startAutoRefresh()
 })
 
 onUnmounted(() => {
-  stopAutoRefresh()
-  
   // Cleanup connection listeners
   window.removeEventListener('online', handleOnline)
   window.removeEventListener('offline', handleOffline)
@@ -177,13 +173,11 @@ onUnmounted(() => {
 
 // If scanId changes, refresh data
 watch(scanId, async () => {
-  stopAutoRefresh()
   // Clear file content when scan changes
   fileContent.value = null
   fileSize.value = null
   fileContentError.value = null
   await fetchScanDetails()
-  startAutoRefresh()
 })
 
 // Watch for tab changes to load tab-specific data
@@ -232,7 +226,6 @@ function handleOnline() {
 
 function handleOffline() {
   isOnline.value = false
-  stopAutoRefresh()
 }
 
 // Retry mechanism
@@ -255,44 +248,6 @@ async function fetchWithRetry(fetchFunction, retries = 3) {
 }
 
 // Methods
-function startAutoRefresh() {
-  if (scan.value && (scan.value.status === 'InProgress' || scan.value.status === 'Initializing')) {
-    refreshInterval.value = setInterval(async () => {
-      try {
-        // Only refresh if online
-        if (!isOnline.value) return
-        
-        const response = await api.getScanProgress(scanId.value)
-        const updatedScan = response.data
-        scan.value = updatedScan
-        
-        // Stop auto-refresh if scan completed
-        if (updatedScan.status === 'Completed' || updatedScan.status === 'Failed' || updatedScan.status === 'Canceled') {
-          stopAutoRefresh()
-          if (updatedScan.status === 'Completed' && activeTab.value === 'issues') {
-            await fetchIssues()
-          }
-        }
-      } catch (error) {
-        console.warn('Error auto-refreshing scan:', error)
-        
-        // If we get a 404, the scan might have been deleted
-        if (error.response?.status === 404) {
-          scan.value = null
-          stopAutoRefresh()
-          handleError(error, 'refresh scan data - scan may have been deleted')
-        }
-      }
-    }, 2000) // Refresh every 2 seconds
-  }
-}
-
-function stopAutoRefresh() {
-  if (refreshInterval.value) {
-    clearInterval(refreshInterval.value)
-    refreshInterval.value = null
-  }
-}
 
 async function refreshData() {
   operationLoading.value.refreshing = true
@@ -483,8 +438,6 @@ async function resumeScan() {
     await scanningStore.resumeScan(scanId.value)
     // Refresh scan data after action
     await fetchScanDetails()
-    // Restart auto-refresh for resumed scan
-    startAutoRefresh()
   } catch (error) {
     handleError(error, 'resume scan')
   } finally {
@@ -503,6 +456,21 @@ async function cancelScan() {
       handleError(error, 'cancel scan')
     } finally {
       operationLoading.value.canceling = false
+    }
+  }
+}
+
+async function deleteScan() {
+  if (confirm('Are you sure you want to delete this scan? This will also delete all related issues and cannot be undone.')) {
+    operationLoading.value.deleting = true
+    try {
+      await scanningStore.deleteScan(scanId.value)
+      // Navigate back to scans list after successful deletion
+      router.push('/scans')
+    } catch (error) {
+      handleError(error, 'delete scan')
+    } finally {
+      operationLoading.value.deleting = false
     }
   }
 }
@@ -607,98 +575,10 @@ function normalizeIssueFilePath(filePath) {
   // Handle Windows-style paths
   normalized = normalized.replace(/^[A-Za-z]:\\/, '')
   
-  // Common absolute path patterns to handle:
-  // 1. /Users/username/project/src/file.js -> src/file.js
-  // 2. C:\\Users\\username\\project\\src\\file.js -> src/file.js
-  // 3. /var/lib/project/src/file.js -> src/file.js
-  
-  // Try to find common project structure indicators
-  const projectIndicators = [
-    'src/',
-    'lib/',
-    'app/',
-    'components/',
-    'pages/',
-    'views/',
-    'controllers/',
-    'models/',
-    'services/',
-    'utils/',
-    'helpers/',
-    'config/',
-    'public/',
-    'assets/',
-    'styles/',
-    'scripts/',
-    'tests/',
-    'test/',
-    'spec/',
-    'docs/',
-    'documentation/',
-    // Also check for files directly in common directories
-    'package.json',
-    'pom.xml',
-    'requirements.txt',
-    'Gemfile',
-    'go.mod',
-    'Cargo.toml',
-    'CMakeLists.txt'
-  ]
-  
   // Normalize path separators first
   normalized = normalized.replace(/\\/g, '/')
-  
-  // Split the path into segments
-  const pathSegments = normalized.split('/')
-  
-  // Try to find the project root by looking for common indicators
-  let rootIndex = -1
-  
-  // Check each segment to see if it's followed by a project indicator
-  for (let i = 0; i < pathSegments.length - 1; i++) {
-    const remainingPath = pathSegments.slice(i).join('/')
-    
-    // Check if any project indicator is found in the remaining path
-    for (const indicator of projectIndicators) {
-      if (remainingPath.includes(indicator)) {
-        // Find where the indicator starts
-        const indicatorIndex = remainingPath.indexOf(indicator)
-        if (indicatorIndex === 0 || remainingPath[indicatorIndex - 1] === '/') {
-          rootIndex = i + Math.floor(indicatorIndex / remainingPath.split('/').length * pathSegments.slice(i).length)
-          break
-        }
-      }
-    }
-    
-    if (rootIndex >= 0) break
-  }
-  
-  // If we found a root index, extract from there
-  if (rootIndex >= 0 && rootIndex < pathSegments.length) {
-    normalized = pathSegments.slice(rootIndex).join('/')
-  } else {
-    // Fallback: remove common base directory patterns
-    const commonBaseDirs = [
-      /^.*\/(Users|home|var)\/[^/]+\//,  // Remove /Users/username/ or /home/username/ or /var/xxx/
-      /^[^/]*\/(workspace|projects?|dev|development|code)\/[^/]+\//,  // Remove workspace/project/xxx/
-      /^.*\/(tmp|temp)\/[^/]+\// // Remove temp directories
-    ]
-    
-    for (const pattern of commonBaseDirs) {
-      const match = normalized.match(pattern)
-      if (match) {
-        normalized = normalized.replace(match[0], '')
-        break
-      }
-    }
-  }
-  
-  // Remove any remaining leading slashes
-  normalized = normalized.replace(/^\/+/, '')
-  
-  console.log(`Normalized file path: '${filePath}' -> '${normalized}'`)
-  
-  return normalized || filePath // Fall back to original if normalization fails
+
+  return normalized;
 }
 
 // Fetch file content

@@ -17,12 +17,12 @@ public class LmStudioOptions
     /// <summary>
     /// API base URL for LMStudio
     /// </summary>
-    public string BaseUrl { get; set; } = "http://localhost:1234/v1";
+    public string BaseUrl { get; set; }
     
     /// <summary>
     /// API key for LMStudio (if required)
     /// </summary>
-    public string ApiKey { get; set; } = "lm-studio";
+    public string ApiKey { get; set; }
     
     /// <summary>
     /// Maximum tokens to generate
@@ -252,7 +252,7 @@ public class LmStudioProvider : ILlmProvider
                     Encoding.UTF8,
                     "application/json");
 
-                var response = await _httpClient.PostAsync("/chat/completions", content);
+                var response = await _httpClient.PostAsync("chat/completions", content);
                 response.EnsureSuccessStatusCode();
 
                 var responseContent = await response.Content.ReadAsStringAsync();

@@ -18,7 +18,7 @@
       <div class="code-header">
         <div class="file-info">
           <span class="mdi mdi-file-document-outline"></span>
-          <span class="file-name">{{ fileName }}</span>
+          <span class="file-name">{{ displayFileName }}</span>
           <span v-if="fileSize" class="file-size">({{ formatFileSize(fileSize) }})</span>
         </div>
         <div class="code-actions">
@@ -118,6 +118,11 @@ const codeBlock = ref(null)
 const hoveredLine = ref(null)
 
 // Computed properties
+const displayFileName = computed(() => {
+  // Extract just the filename from the full path
+  return props.fileName?.split('/').pop() || props.fileName || 'Unknown File'
+})
+
 const lineCount = computed(() => {
   return props.fileContent ? props.fileContent.split('\n').length : 0
 })
@@ -266,7 +271,7 @@ function downloadFile() {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = props.fileName.split('/').pop()
+  a.download = displayFileName
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

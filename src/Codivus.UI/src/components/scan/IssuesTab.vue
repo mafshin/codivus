@@ -74,25 +74,28 @@
             <!-- Debug selected file info -->
             <div v-if="debugMode" class="debug-info" style="margin-bottom: 1rem;">
               <h5>File Issues Debug:</h5>
-            <p>Selected File: {{ selectedFile }}</p>
-            <p>Normalized Selected: {{ normalizeFilePath(selectedFile) }}</p>
-            <p>Total Issues: {{ issues.length }}</p>
-            <p>Issues for this file: {{ selectedFileIssues.length }}</p>
-            <div v-if="issues.length > 0">
-              <p>Sample issue paths:</p>
-              <ul>
-                <li v-for="(issue, index) in issues.slice(0, 5)" :key="index">
-                  <strong>Issue {{ index + 1 }}:</strong><br>
-                  Original: <code>{{ issue.originalFilePath || issue.filePath }}</code><br>
-                  Normalized: <code>{{ issue.filePath }}</code><br>
-                  Matches selected: {{ issue.filePath === selectedFile ? 'YES' : 'NO' }}
-                </li>
-              </ul>
+              <p>Selected File: {{ selectedFile }}</p>
+              <p>Normalized Selected: {{ normalizeFilePath(selectedFile) }}</p>
+              <p>Total Issues: {{ issues.length }}</p>
+              <p>Issues for this file: {{ selectedFileIssues.length }}</p>
+              <hr style="margin: 0.5rem 0;">
+              <div v-if="issues.length > 0">
+                <p>Sample issue paths:</p>
+                <ul>
+                  <li v-for="(issue, index) in issues.slice(0, 5)" :key="index">
+                    <strong>Issue {{ index + 1 }}:</strong><br>
+                    Original: <code>{{ issue.originalFilePath || issue.filePath }}</code><br>
+                    Normalized: <code>{{ normalizeFilePath(issue.filePath) }}</code><br>
+                    Exact matches selected: {{ issue.filePath === selectedFile ? 'YES' : 'NO' }}<br>
+                    Normalized matches: {{ normalizeFilePath(issue.filePath) === normalizeFilePath(selectedFile) ? 'YES' : 'NO' }}
+                  </li>
+                </ul>
+              </div>
+              <p>Direct matches: {{ issues.filter(i => i.filePath === selectedFile).length }}</p>
+              <p>Normalized matches: {{ issues.filter(i => normalizeFilePath(i.filePath) === normalizeFilePath(selectedFile)).length }}</p>
+              <button @click="testNormalization" class="btn btn-sm btn-info" style="margin-right: 0.5rem;">Test Path Normalization</button>
+              <button @click="forceRecomputeIssues" class="btn btn-sm btn-warning">Force Recompute</button>
             </div>
-            <p>Direct matches: {{ issues.filter(i => i.filePath === selectedFile).length }}</p>
-            <p>Normalized matches: {{ issues.filter(i => normalizeFilePath(i.filePath) === normalizeFilePath(selectedFile)).length }}</p>
-            <button @click="testNormalization" class="btn btn-sm btn-info">Test Path Normalization</button>
-          </div>
           
           <div class="issues-section-header">
             <h4>Issues in this file ({{ selectedFileIssues.length }})</h4>
@@ -210,6 +213,8 @@ const props = defineProps({
 // Local reactive state
 const loadingFileContent = ref(false)
 const showAllFiles = ref(false)
+// Use a reactive ref for selected file issues instead of computed
+const selectedFileIssues = ref([])
 
 const emit = defineEmits([
   'toggleSidebar',
@@ -311,57 +316,106 @@ const filteredFiles = computed(() => {
   return filteredFilesWithIssues.value
 })
 
-// Helper function to normalize issue file paths (bypass double filtering)
-const selectedFileIssues = computed(() => {
-  if (!props.selectedFile) return []
+// Function to calculate issues for the selected file
+function calculateSelectedFileIssues() {
+  // Clear issues if no file is selected
+  if (!props.selectedFile) {
+    selectedFileIssues.value = []
+    return
+  }
   
-  const normalizedSelectedFile = normalizeFilePath(props.selectedFile)
+  const currentSelectedFile = props.selectedFile
+  const currentIssues = props.issues
+  const currentSearchQuery = props.searchQuery
+  const currentSeverityFilter = props.severityFilter
+  const currentCategoryFilter = props.categoryFilter
   
-  // Don't use filteredIssues here as it already filters by selectedFile
-  // Instead, filter all issues directly by the selected file and other active filters
-  return props.issues.filter(issue => {
+  // Debug logging
+  if (props.debugMode) {
+    console.log('calculateSelectedFileIssues - selectedFile:', currentSelectedFile)
+    console.log('calculateSelectedFileIssues - total issues:', currentIssues.length)
+  }
+  
+  // Filter all issues to find those that match the selected file
+  const matchingIssues = currentIssues.filter(issue => {
+    // Check if the issue belongs to the selected file
+    if (!issue.filePath) return false
+    
+    // Try multiple path comparison methods to handle different formats
+    const issueFilePath = issue.filePath
+    const selectedFilePath = currentSelectedFile
+    
     // Normalize both paths for comparison
-    const normalizedIssueFile = normalizeFilePath(issue.filePath)
+    const normalizedIssuePath = normalizeFilePath(issueFilePath)
+    const normalizedSelectedPath = normalizeFilePath(selectedFilePath)
     
-    // Must match the selected file (try multiple comparison methods)
-    const pathsMatch = normalizedIssueFile === normalizedSelectedFile ||
-                      issue.filePath === props.selectedFile ||
-                      normalizedIssueFile.endsWith(normalizedSelectedFile) ||
-                      normalizedSelectedFile.endsWith(normalizedIssueFile)
-    
-    if (!pathsMatch) {
-      return false
+    // Check for exact matches (original and normalized)
+    if (issueFilePath === selectedFilePath || normalizedIssuePath === normalizedSelectedPath) {
+      return applySearchAndFilters(issue, currentSearchQuery, currentSeverityFilter, currentCategoryFilter)
     }
     
-    // Apply search filter
-    if (props.searchQuery) {
-      const searchLower = props.searchQuery.toLowerCase()
-      const searchFields = [
-        issue.title,
-        issue.description,
-        issue.filePath,
-        issue.category,
-        issue.ruleId
-      ].filter(Boolean).join(' ').toLowerCase()
-      
-      if (!searchFields.includes(searchLower)) {
-        return false
+    // Check if paths match when removing leading path components
+    // This handles cases where one path is relative and the other is absolute
+    const issuePathParts = normalizedIssuePath.split('/')
+    const selectedPathParts = normalizedSelectedPath.split('/')
+    
+    // If one path ends with the other, consider it a match
+    if (issuePathParts.length >= selectedPathParts.length) {
+      const issuePathSuffix = issuePathParts.slice(-selectedPathParts.length).join('/')
+      if (issuePathSuffix === normalizedSelectedPath) {
+        return applySearchAndFilters(issue, currentSearchQuery, currentSeverityFilter, currentCategoryFilter)
       }
     }
     
-    // Apply severity filter
-    if (props.severityFilter !== 'all' && issue.severity !== props.severityFilter) {
-      return false
+    if (selectedPathParts.length >= issuePathParts.length) {
+      const selectedPathSuffix = selectedPathParts.slice(-issuePathParts.length).join('/')
+      if (selectedPathSuffix === normalizedIssuePath) {
+        return applySearchAndFilters(issue, currentSearchQuery, currentSeverityFilter, currentCategoryFilter)
+      }
     }
     
-    // Apply category filter
-    if (props.categoryFilter !== 'all' && issue.category !== props.categoryFilter) {
-      return false
-    }
-    
-    return true
+    return false
   })
-})
+
+  // Update the reactive ref
+  selectedFileIssues.value = matchingIssues
+  
+  // Debug logging
+  if (props.debugMode) {
+    console.log('calculateSelectedFileIssues - matching issues:', matchingIssues.length)
+  }
+}
+
+// Helper function to apply search and filter criteria to an issue
+function applySearchAndFilters(issue, searchQuery, severityFilter, categoryFilter) {
+  // Apply search filter
+  if (searchQuery) {
+    const searchLower = searchQuery.toLowerCase()
+    const searchFields = [
+      issue.title,
+      issue.description,
+      issue.filePath,
+      issue.category,
+      issue.ruleId
+    ].filter(Boolean).join(' ').toLowerCase()
+    
+    if (!searchFields.includes(searchLower)) {
+      return false
+    }
+  }
+  
+  // Apply severity filter
+  if (severityFilter !== 'all' && issue.severity !== severityFilter) {
+    return false
+  }
+  
+  // Apply category filter
+  if (categoryFilter !== 'all' && issue.category !== categoryFilter) {
+    return false
+  }
+  
+  return true
+}
 
 // Issues displayed before file selection (for filter count)
 const displayedIssues = computed(() => {
@@ -437,7 +491,8 @@ function filterTreeNodes(nodes, filesWithIssues) {
 function normalizeFilePath(path) {
   if (!path) return ''
   // Remove leading slashes and normalize separators
-  return path.replace(/^\/+/, '').replace(/\\/g, '/')
+  // Remove leading slashes, normalize separators, and remove trailing slashes for consistent comparison
+  return path.replace(/^[/\\]+/, '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
 }
 
 function clearFilters() {
@@ -462,10 +517,27 @@ function testNormalization() {
     props.issues.slice(0, 5).forEach((issue, index) => {
       console.log(`  Issue ${index + 1}:`)
       console.log(`    Original: ${issue.originalFilePath || issue.filePath}`)
-      console.log(`    Normalized: ${issue.filePath}`)
-      console.log(`    Matches: ${issue.filePath === props.selectedFile}`)
+      console.log(`    Normalized: ${normalizeFilePath(issue.filePath)}`)
+      console.log(`    Exact matches: ${issue.filePath === props.selectedFile}`)
+      console.log(`    Normalized matches: ${normalizeFilePath(issue.filePath) === normalizeFilePath(props.selectedFile)}`)
     })
   }
+}
+
+// Force recompute issues for debugging
+function forceRecomputeIssues() {
+  console.log('Force recompute triggered')
+  console.log('Current selectedFile:', props.selectedFile)
+  console.log('Current issues:', props.issues.length)
+  console.log('Current selectedFileIssues before recalculation:', selectedFileIssues.value.length)
+  
+  // Force recalculation
+  calculateSelectedFileIssues()
+  
+  console.log('Current selectedFileIssues after recalculation:', selectedFileIssues.value.length)
+  
+  // Also emit refresh to parent
+  emit('refreshIssues')
 }
 
 // Fetch file content when a file is selected
@@ -486,12 +558,37 @@ async function fetchFileContent() {
   }
 }
 
-// Watch for selected file changes
-watch(() => props.selectedFile, (newFile) => {
+// Watch for selected file changes to help with debugging
+watch(() => props.selectedFile, (newFile, oldFile) => {
+  if (props.debugMode) {
+    console.log('Watch: selectedFile changed from', oldFile, 'to', newFile)
+  }
+  // Recalculate issues for the new selected file
+  calculateSelectedFileIssues()
+  
   if (newFile) {
     fetchFileContent()
   }
 }, { immediate: true })
+
+// Watch for issues changes
+watch(() => props.issues, (newIssues) => {
+  if (props.debugMode) {
+    console.log('Watch: issues changed, new length:', newIssues.length)
+    console.log('Watch: current selectedFile:', props.selectedFile)
+  }
+  // Recalculate issues when the issues array changes
+  calculateSelectedFileIssues()
+}, { deep: true })
+
+// Watch for filter changes
+watch([() => props.searchQuery, () => props.severityFilter, () => props.categoryFilter], () => {
+  if (props.debugMode) {
+    console.log('Watch: filters changed')
+  }
+  // Recalculate issues when filters change
+  calculateSelectedFileIssues()
+})
 
 // Watch for file content updates to stop loading
 watch(() => props.fileContent, () => {
@@ -504,7 +601,10 @@ watch(() => props.fileContentError, () => {
 
 // Expose functions for template usage
 defineExpose({
-  normalizeFilePath
+  normalizeFilePath,
+  testNormalization,
+  forceRecomputeIssues,
+  calculateSelectedFileIssues
 })
 </script>
 

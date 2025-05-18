@@ -184,7 +184,7 @@ public class RepositoryService : IRepositoryService
                 rootDir.LastModified = _fileSystem.Directory.GetLastWriteTime(repository.Location);
                 
                 // Recursively scan the directory
-                await ScanDirectoryAsync(rootDir, repository.Location);
+                await ScanDirectoryAsync(rootDir, repository.Location, repository.Location);
                 _logger.LogInformation("Completed scanning repository structure for {RepositoryName}. Found {FileCount} items", 
                     repository.Name, rootDir.Children?.Count ?? 0);
             }
@@ -205,7 +205,7 @@ public class RepositoryService : IRepositoryService
         return rootDir;
     }
 
-    private async Task ScanDirectoryAsync(RepositoryFile parent, string path)
+    private async Task ScanDirectoryAsync(RepositoryFile parent, string path, string rootPath)
     {
         try
         {
@@ -231,7 +231,7 @@ public class RepositoryService : IRepositoryService
                     Id = Guid.NewGuid(),
                     RepositoryId = parent.RepositoryId,
                     Name = fileInfo.Name,
-                    Path = filePath,
+                    Path = Path.GetRelativePath(rootPath, filePath),
                     IsDirectory = false,
                     LastModified = fileInfo.LastWriteTime,
                     SizeInBytes = fileInfo.Length,
@@ -258,7 +258,7 @@ public class RepositoryService : IRepositoryService
                     Id = Guid.NewGuid(),
                     RepositoryId = parent.RepositoryId,
                     Name = dirInfo.Name,
-                    Path = dirPath,
+                    Path = Path.GetRelativePath(rootPath, dirPath),
                     IsDirectory = true,
                     LastModified = dirInfo.LastWriteTime,
                     Children = new List<RepositoryFile>()
@@ -267,7 +267,7 @@ public class RepositoryService : IRepositoryService
                 parent.Children.Add(dirNode);
                 
                 // Recursively scan subdirectories
-                await ScanDirectoryAsync(dirNode, dirPath);
+                await ScanDirectoryAsync(dirNode, dirPath, rootPath);
             }
         }
         catch (Exception ex)
@@ -284,16 +284,18 @@ public class RepositoryService : IRepositoryService
             throw new ArgumentException($"Repository with ID {repositoryId} not found");
         }
 
-        if (!_fileSystem.File.Exists(filePath))
+        var fileFullPath = Path.Combine(repository.Location, filePath);
+
+        if (!_fileSystem.File.Exists(fileFullPath))
         {
             _logger.LogWarning("File not found: {FilePath}", filePath);
             throw new FileNotFoundException($"File not found: {filePath}");
         }
 
-        _logger.LogInformation("Reading file content: {FilePath}", filePath);
+        _logger.LogInformation("Reading file content: {FilePath}", fileFullPath);
         
         // Actually use await to ensure the method is async
-        return await _fileSystem.File.ReadAllTextAsync(filePath);
+        return await _fileSystem.File.ReadAllTextAsync(fileFullPath);
     }
 
     public async Task<bool> ValidateRepositoryAsync(string repositoryLocation, RepositoryType repositoryType)

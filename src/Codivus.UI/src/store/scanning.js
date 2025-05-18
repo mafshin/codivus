@@ -253,6 +253,47 @@ export const useScanningStore = defineStore({
       }
     },
     
+    // Delete a scan and all its related issues
+    async deleteScan(scanId) {
+      this.error = null
+      
+      try {
+        console.log('Store: Starting delete of scan', scanId)
+        
+        // Stop polling for this scan
+        this.stopPolling(scanId)
+        
+        // Delete the scan via API
+        console.log('Store: Calling API deleteScan')
+        await api.deleteScan(scanId)
+        console.log('Store: API deleteScan succeeded')
+        
+        // Remove scan from local store
+        delete this.scans[scanId]
+        
+        // Remove issues associated with this scan
+        delete this.scanIssues[scanId]
+        
+        // Clear current scan if it was the deleted one
+        if (this.currentScan && this.currentScan.id === scanId) {
+          this.currentScan = null
+        }
+        
+        console.log('Store: Delete scan completed successfully')
+        return true
+      } catch (error) {
+        console.error('Store: Error deleting scan:', {
+          scanId,
+          error: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data
+        })
+        this.error = error.message || `Failed to delete scan ${scanId}`
+        throw error
+      }
+    },
+    
     // Fetch issues for a scan
     async fetchScanIssues(scanId) {
       this.loadingIssues = true

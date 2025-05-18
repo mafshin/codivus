@@ -11,13 +11,6 @@
           <span class="mdi" :class="refreshing ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span>
           Refresh
         </button>
-        <button 
-          class="btn btn-primary"
-          @click="toggleAutoRefresh"
-        >
-          <span class="mdi" :class="autoRefreshEnabled ? 'mdi-pause' : 'mdi-play'"></span>
-          {{ autoRefreshEnabled ? 'Stop' : 'Start' }} Auto-refresh
-        </button>
       </div>
     </div>
     
@@ -148,6 +141,18 @@
               <span class="mdi mdi-stop"></span> Cancel
             </button>
             <button 
+              v-if="scan.status === 'Completed' || scan.status === 'Failed' || scan.status === 'Canceled'"
+              class="btn btn-sm btn-danger" 
+              @click.stop="deleteScan(scan.id)"
+              :disabled="deletingScans.has(scan.id)"
+            >
+              <span 
+                class="mdi" 
+                :class="deletingScans.has(scan.id) ? 'mdi-loading mdi-spin' : 'mdi-delete'"
+              ></span> 
+              {{ deletingScans.has(scan.id) ? 'Deleting...' : 'Delete' }}
+            </button>
+            <button 
               class="btn btn-sm btn-secondary"
               @click.stop="navigateToScan(scan.id)"
             >
@@ -161,7 +166,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/store/repository'
 import { useScanningStore } from '@/store/scanning'
@@ -177,8 +182,7 @@ const searchQuery = ref('')
 const repositoryFilter = ref('all')
 const statusFilter = ref('all')
 const sortOption = ref('date-desc')
-const autoRefreshEnabled = ref(true)
-const refreshInterval = ref(null)
+const deletingScans = ref(new Set())
 
 // Computed properties
 const repositories = computed(() => repositoryStore.repositories)
@@ -284,46 +288,6 @@ async function refreshAllData() {
   }
 }
 
-function startAutoRefresh() {
-  if (refreshInterval.value) {
-    clearInterval(refreshInterval.value)
-  }
-  
-  refreshInterval.value = setInterval(async () => {
-    // Only refresh active scans
-    const activeScans = allScans.value.filter(scan => 
-      scan.status === 'InProgress' || scan.status === 'Initializing'
-    )
-    
-    if (activeScans.length > 0) {
-      for (const scan of activeScans) {
-        try {
-          await scanningStore.fetchScanProgress(scan.id, false)
-        } catch (error) {
-          console.warn(`Error refreshing scan ${scan.id}:`, error)
-        }
-      }
-    }
-  }, 5000) // Refresh every 5 seconds
-}
-
-function stopAutoRefresh() {
-  if (refreshInterval.value) {
-    clearInterval(refreshInterval.value)
-    refreshInterval.value = null
-  }
-}
-
-function toggleAutoRefresh() {
-  autoRefreshEnabled.value = !autoRefreshEnabled.value
-  
-  if (autoRefreshEnabled.value) {
-    startAutoRefresh()
-  } else {
-    stopAutoRefresh()
-  }
-}
-
 const clearFilters = () => {
   searchQuery.value = ''
   repositoryFilter.value = 'all'
@@ -397,6 +361,28 @@ const cancelScan = async (scanId) => {
   }
 }
 
+const deleteScan = async (scanId) => {
+  // Confirmation dialog
+  if (!confirm('Are you sure you want to delete this scan? This will also delete all related issues and cannot be undone.')) {
+    return
+  }
+  
+  // Add to deleting set to show loading state
+  deletingScans.value.add(scanId)
+  
+  try {
+    await scanningStore.deleteScan(scanId)
+    console.log(`Successfully deleted scan ${scanId}`)
+  } catch (error) {
+    console.error('Error deleting scan:', error)
+    // Show error message to user
+    alert(`Failed to delete scan: ${error.message}`)
+  } finally {
+    // Remove from deleting set
+    deletingScans.value.delete(scanId)
+  }
+}
+
 const navigateToScan = (scanId) => {
   router.push({ name: 'ScanDetails', params: { id: scanId } })
 }
@@ -407,20 +393,11 @@ onMounted(async () => {
   
   try {
     await refreshAllData()
-    
-    // Start auto-refresh if enabled
-    if (autoRefreshEnabled.value) {
-      startAutoRefresh()
-    }
   } catch (error) {
     console.error('Error loading scans:', error)
   } finally {
     loading.value = false
   }
-})
-
-onUnmounted(() => {
-  stopAutoRefresh()
 })
 </script>
 

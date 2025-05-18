@@ -415,6 +415,53 @@ public class JsonDataStore
         return removed;
     }
     
+    /// <summary>
+    /// Delete a scan and all its related issues
+    /// </summary>
+    /// <param name="scanId">Scan ID to delete</param>
+    /// <returns>True if successfully deleted, false if scan not found</returns>
+    public async Task<bool> DeleteScanWithIssuesAsync(Guid scanId)
+    {
+        // Check if scan exists
+        var scan = _scans.FirstOrDefault(s => s.Id == scanId);
+        if (scan == null)
+        {
+            return false;
+        }
+        
+        _logger.LogInformation("Starting delete of scan {ScanId} and its related issues", scanId);
+        
+        // Delete all issues related to this scan
+        var scanIssues = _issues.Where(i => i.ScanId == scanId).ToList();
+        _logger.LogInformation("Found {IssueCount} issues to delete for scan {ScanId}", 
+            scanIssues.Count, scanId);
+        
+        foreach (var issue in scanIssues)
+        {
+            _issues.Remove(issue);
+        }
+        
+        // Save issues if any were removed
+        if (scanIssues.Any())
+        {
+            await SaveIssues();
+        }
+        
+        // Delete the scan itself
+        bool scanRemoved = _scans.Remove(scan);
+        
+        // Save scans if removed
+        if (scanRemoved)
+        {
+            await SaveScans();
+        }
+        
+        _logger.LogInformation("Deleted scan {ScanId} and {IssueCount} related issues", 
+            scanId, scanIssues.Count);
+        
+        return scanRemoved;
+    }
+    
     // Issue methods
     
     public Task<IEnumerable<CodeIssue>> GetIssuesAsync()
