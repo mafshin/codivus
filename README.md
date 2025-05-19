@@ -1,5 +1,7 @@
 # 🔍 Codivus - AI-Enabled Code Scanning Solution
 
+<img src="src/docs/header.png" alt="placeholder"  height="300">
+
 A modern, AI-powered code scanning solution designed to analyze code repositories for potential issues, vulnerabilities, and improvement opportunities.
 
 ## 🚀 Features
