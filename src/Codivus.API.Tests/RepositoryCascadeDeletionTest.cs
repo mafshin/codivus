@@ -212,28 +212,4 @@ public class RepositoryCascadeDeletionTest
         await _dataStore.DeleteRepositoryAsync(repository.Id);
         Console.WriteLine("Cleaned up test data");
     }
-    
-    /// <summary>
-    /// Run all tests
-    /// </summary>
-    public static async Task Main(string[] args)
-    {
-        var test = new RepositoryCascadeDeletionTest();
-        
-        try
-        {
-            await test.TestCascadeDeletion();
-            await test.TestDeletionWithActiveScans();
-            
-            Console.WriteLine("\\n✅ All tests completed successfully!");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"\\n❌ Test failed with error: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
-        }
-        
-        Console.WriteLine("\\nPress any key to exit...");
-        Console.ReadKey();
-    }
 }
