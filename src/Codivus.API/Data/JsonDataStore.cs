@@ -205,13 +205,13 @@ public class JsonDataStore
 
     // Repository methods
     
-    public Task<IEnumerable<Repository>> GetRepositoriesAsync()
+    public virtual Task<IEnumerable<Repository>> GetRepositoriesAsync()
     {
         // Create and return a copy to avoid modification issues
         return Task.FromResult<IEnumerable<Repository>>(new List<Repository>(_repositories));
     }
     
-    public Task<Repository?> GetRepositoryAsync(Guid id)
+    public virtual Task<Repository?> GetRepositoryAsync(Guid id)
     {
         _logger.LogInformation("DataStore: Looking for repository with ID: {RepositoryId}", id);
         var repository = _repositories.FirstOrDefault(r => r.Id == id);
@@ -230,7 +230,7 @@ public class JsonDataStore
         return Task.FromResult(repository);
     }
     
-    public async Task<Repository> AddRepositoryAsync(Repository repository)
+    public virtual async Task<Repository> AddRepositoryAsync(Repository repository)
     {
         // Set ID and timestamp
         if (repository.Id == Guid.Empty)
@@ -247,7 +247,7 @@ public class JsonDataStore
         return repository;
     }
     
-    public async Task<Repository> UpdateRepositoryAsync(Repository repository)
+    public virtual async Task<Repository> UpdateRepositoryAsync(Repository repository)
     {
         // Find and update
         var existingIndex = _repositories.FindIndex(r => r.Id == repository.Id);
@@ -263,7 +263,7 @@ public class JsonDataStore
         return repository;
     }
     
-    public async Task<bool> DeleteRepositoryAsync(Guid id)
+    public virtual async Task<bool> DeleteRepositoryAsync(Guid id)
     {
         // Find and remove
         var repository = _repositories.FirstOrDefault(r => r.Id == id);
@@ -348,22 +348,22 @@ public class JsonDataStore
     
     // Scan methods
     
-    public Task<IEnumerable<ScanProgress>> GetScansAsync()
+    public virtual Task<IEnumerable<ScanProgress>> GetScansAsync()
     {
         return Task.FromResult<IEnumerable<ScanProgress>>(new List<ScanProgress>(_scans));
     }
     
-    public Task<IEnumerable<ScanProgress>> GetScansByRepositoryAsync(Guid repositoryId)
+    public virtual Task<IEnumerable<ScanProgress>> GetScansByRepositoryAsync(Guid repositoryId)
     {
         return Task.FromResult<IEnumerable<ScanProgress>>(_scans.Where(s => s.RepositoryId == repositoryId).ToList());
     }
     
-    public Task<ScanProgress?> GetScanAsync(Guid id)
+    public virtual Task<ScanProgress?> GetScanAsync(Guid id)
     {
         return Task.FromResult(_scans.FirstOrDefault(s => s.Id == id));
     }
     
-    public async Task<ScanProgress> AddScanAsync(ScanProgress scan)
+    public virtual async Task<ScanProgress> AddScanAsync(ScanProgress scan)
     {
         // Set ID
         if (scan.Id == Guid.Empty)
@@ -379,7 +379,7 @@ public class JsonDataStore
         return scan;
     }
     
-    public async Task<ScanProgress> UpdateScanAsync(ScanProgress scan)
+    public virtual async Task<ScanProgress> UpdateScanAsync(ScanProgress scan)
     {
         // Find and update
         var existingIndex = _scans.FindIndex(s => s.Id == scan.Id);
@@ -395,7 +395,7 @@ public class JsonDataStore
         return scan;
     }
     
-    public async Task<bool> DeleteScanAsync(Guid id)
+    public virtual async Task<bool> DeleteScanAsync(Guid id)
     {
         // Find and remove
         var scan = _scans.FirstOrDefault(s => s.Id == id);
@@ -420,7 +420,7 @@ public class JsonDataStore
     /// </summary>
     /// <param name="scanId">Scan ID to delete</param>
     /// <returns>True if successfully deleted, false if scan not found</returns>
-    public async Task<bool> DeleteScanWithIssuesAsync(Guid scanId)
+    public virtual async Task<bool> DeleteScanWithIssuesAsync(Guid scanId)
     {
         // Check if scan exists
         var scan = _scans.FirstOrDefault(s => s.Id == scanId);
@@ -464,27 +464,27 @@ public class JsonDataStore
     
     // Issue methods
     
-    public Task<IEnumerable<CodeIssue>> GetIssuesAsync()
+    public virtual Task<IEnumerable<CodeIssue>> GetIssuesAsync()
     {
         return Task.FromResult<IEnumerable<CodeIssue>>(new List<CodeIssue>(_issues));
     }
     
-    public Task<IEnumerable<CodeIssue>> GetIssuesByRepositoryAsync(Guid repositoryId)
+    public virtual Task<IEnumerable<CodeIssue>> GetIssuesByRepositoryAsync(Guid repositoryId)
     {
         return Task.FromResult<IEnumerable<CodeIssue>>(_issues.Where(i => i.RepositoryId == repositoryId).ToList());
     }
     
-    public Task<IEnumerable<CodeIssue>> GetIssuesByScanAsync(Guid scanId)
+    public virtual Task<IEnumerable<CodeIssue>> GetIssuesByScanAsync(Guid scanId)
     {
         return Task.FromResult<IEnumerable<CodeIssue>>(_issues.Where(i => i.ScanId == scanId).ToList());
     }
     
-    public Task<CodeIssue?> GetIssueAsync(Guid id)
+    public virtual Task<CodeIssue?> GetIssueAsync(Guid id)
     {
         return Task.FromResult(_issues.FirstOrDefault(i => i.Id == id));
     }
     
-    public async Task<CodeIssue> AddIssueAsync(CodeIssue issue)
+    public virtual async Task<CodeIssue> AddIssueAsync(CodeIssue issue)
     {
         // Set ID
         if (issue.Id == Guid.Empty)
@@ -500,7 +500,7 @@ public class JsonDataStore
         return issue;
     }
     
-    public async Task<CodeIssue> UpdateIssueAsync(CodeIssue issue)
+    public virtual async Task<CodeIssue> UpdateIssueAsync(CodeIssue issue)
     {
         // Find and update
         var existingIndex = _issues.FindIndex(i => i.Id == issue.Id);
@@ -516,7 +516,7 @@ public class JsonDataStore
         return issue;
     }
     
-    public async Task<bool> DeleteIssueAsync(Guid id)
+    public virtual async Task<bool> DeleteIssueAsync(Guid id)
     {
         // Find and remove
         var issue = _issues.FirstOrDefault(i => i.Id == id);
@@ -538,22 +538,22 @@ public class JsonDataStore
     
     // Configuration methods
     
-    public Task<IEnumerable<ScanConfiguration>> GetConfigurationsAsync()
+    public virtual Task<IEnumerable<ScanConfiguration>> GetConfigurationsAsync()
     {
         return Task.FromResult<IEnumerable<ScanConfiguration>>(new List<ScanConfiguration>(_configurations));
     }
     
-    public Task<IEnumerable<ScanConfiguration>> GetConfigurationsByRepositoryAsync(Guid repositoryId)
+    public virtual Task<IEnumerable<ScanConfiguration>> GetConfigurationsByRepositoryAsync(Guid repositoryId)
     {
         return Task.FromResult<IEnumerable<ScanConfiguration>>(_configurations.Where(c => c.RepositoryId == repositoryId).ToList());
     }
     
-    public Task<ScanConfiguration?> GetConfigurationAsync(Guid id)
+    public virtual Task<ScanConfiguration?> GetConfigurationAsync(Guid id)
     {
         return Task.FromResult(_configurations.FirstOrDefault(c => c.Id == id));
     }
     
-    public async Task<ScanConfiguration> AddConfigurationAsync(ScanConfiguration configuration)
+    public virtual async Task<ScanConfiguration> AddConfigurationAsync(ScanConfiguration configuration)
     {
         // Set ID and timestamps
         if (configuration.Id == Guid.Empty)
@@ -572,7 +572,7 @@ public class JsonDataStore
         return configuration;
     }
     
-    public async Task<ScanConfiguration> UpdateConfigurationAsync(ScanConfiguration configuration)
+    public virtual async Task<ScanConfiguration> UpdateConfigurationAsync(ScanConfiguration configuration)
     {
         // Update timestamp
         configuration.UpdatedAt = DateTime.UtcNow;
@@ -591,7 +591,7 @@ public class JsonDataStore
         return configuration;
     }
     
-    public async Task<bool> DeleteConfigurationAsync(Guid id)
+    public virtual async Task<bool> DeleteConfigurationAsync(Guid id)
     {
         // Find and remove
         var configuration = _configurations.FirstOrDefault(c => c.Id == id);
@@ -618,7 +618,7 @@ public class JsonDataStore
     /// </summary>
     /// <param name="repositoryId">Repository ID</param>
     /// <returns>Number of scans for the repository</returns>
-    public Task<int> GetScanCountByRepositoryAsync(Guid repositoryId)
+    public virtual Task<int> GetScanCountByRepositoryAsync(Guid repositoryId)
     {
         var count = _scans.Count(s => s.RepositoryId == repositoryId);
         return Task.FromResult(count);
@@ -629,7 +629,7 @@ public class JsonDataStore
     /// </summary>
     /// <param name="repositoryId">Repository ID</param>
     /// <returns>Number of issues for the repository</returns>
-    public Task<int> GetIssueCountByRepositoryAsync(Guid repositoryId)
+    public virtual Task<int> GetIssueCountByRepositoryAsync(Guid repositoryId)
     {
         var count = _issues.Count(i => i.RepositoryId == repositoryId);
         return Task.FromResult(count);
@@ -640,7 +640,7 @@ public class JsonDataStore
     /// </summary>
     /// <param name="repositoryId">Repository ID</param>
     /// <returns>Number of configurations for the repository</returns>
-    public Task<int> GetConfigurationCountByRepositoryAsync(Guid repositoryId)
+    public virtual Task<int> GetConfigurationCountByRepositoryAsync(Guid repositoryId)
     {
         var count = _configurations.Count(c => c.RepositoryId == repositoryId);
         return Task.FromResult(count);
@@ -651,7 +651,7 @@ public class JsonDataStore
     /// </summary>
     /// <param name="repositoryId">Repository ID</param>
     /// <returns>True if repository has active (InProgress or Paused) scans</returns>
-    public Task<bool> HasActiveScansAsync(Guid repositoryId)
+    public virtual Task<bool> HasActiveScansAsync(Guid repositoryId)
     {
         var hasActiveScans = _scans.Any(s => s.RepositoryId == repositoryId && 
             (s.Status == ScanStatus.InProgress || s.Status == ScanStatus.Paused));
