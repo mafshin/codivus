@@ -1,0 +1,35 @@
+name: Build Codivus
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Restore backend dependencies
+      run: dotnet restore src/Codivus.sln
+
+    - name: Build backend
+      run: dotnet build src/Codivus.sln --no-restore
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    - name: Install frontend dependencies
+      run: npm install
+      working-directory: src/Codivus.UI
+    - name: Build frontend
+      run: npm run build
+      working-directory: src/Codivus.UI
