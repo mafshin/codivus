@@ -23,6 +23,18 @@ jobs:
 
     - name: Build backend
       run: dotnet build src/Codivus.sln --no-restore
+
+    - name: Run backend tests
+      run: dotnet test src/Codivus.sln --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+    - name: Publish test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Backend Tests
+        path: '**/*.trx'
+        reporter: dotnet-trx
+
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
