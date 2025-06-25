@@ -88,7 +88,7 @@ namespace Codivus.API.Services
             return Task.FromResult(default(T));
         }
 
-        public Task<bool> UpdateTaskStatusAsync(string taskId, QueueTaskStatus status, string message = null, CancellationToken cancellationToken = default)
+        public Task<bool> UpdateTaskStatusAsync(string taskId, QueueTaskStatus status, string? message = null, CancellationToken cancellationToken = default)
         {
             if (!_tasks.TryGetValue(taskId, out var task))
             {

@@ -1,8 +1,14 @@
+using Codivus.API.BackgroundServices;
 using Codivus.API.Data;
+using Codivus.API.Interfaces;
 using Codivus.API.LLM;
 using Codivus.API.Middleware;
 using Codivus.API.Services;
 using Codivus.Core.Interfaces;
+using Codivus.Core.Models;
+using Codivus.Graph.Configuration;
+using Codivus.Graph.Interfaces;
+using Codivus.Graph.Services;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using System.IO.Abstractions;
@@ -67,6 +73,20 @@ builder.Services.AddSingleton<IScanningService, ScanningService>();
 builder.Services.AddTransient<ILlmProvider, OllamaProvider>();
 builder.Services.AddTransient<ILlmProvider, LmStudioProvider>();
 builder.Services.AddSingleton<LlmProviderFactory>();
+
+// Configure Graph services
+builder.Services.Configure<GraphConfiguration>(builder.Configuration.GetSection("Graph"));
+builder.Services.AddSingleton<IGraphStorageService, GraphStorageService>();
+builder.Services.AddSingleton<IRoslynAnalyzer, RoslynAnalyzer>();
+builder.Services.AddSingleton<IRoslynAnalysisService, RoslynAnalysisService>();
+builder.Services.AddSingleton<IGraphScanProcessor, GraphScanProcessor>();
+
+// Register task queue for graph scanning
+builder.Services.AddSingleton<ITaskQueue<GraphScanTask>, TaskQueueService<GraphScanTask>>();
+builder.Services.AddSingleton<GraphScanOrchestrator>();
+
+// Register background services
+builder.Services.AddHostedService<GraphScanWorker>();
 
 var app = builder.Build();
 

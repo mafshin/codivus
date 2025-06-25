@@ -3,82 +3,146 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Codivus.API.Interfaces;
 using Codivus.Graph.Interfaces;
+using Codivus.Graph.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Codivus.API.Services
 {
-    public class RoslynAnalysisService
+    /// <summary>
+    /// Service for performing Roslyn-based code analysis integrated with graph storage
+    /// </summary>
+    public class RoslynAnalysisService : IRoslynAnalysisService
     {
+        private readonly IRoslynAnalyzer _roslynAnalyzer;
         private readonly ILogger<RoslynAnalysisService> _logger;
 
-        public RoslynAnalysisService(ILogger<RoslynAnalysisService> logger)
+        public RoslynAnalysisService(
+            IRoslynAnalyzer roslynAnalyzer,
+            ILogger<RoslynAnalysisService> logger)
         {
+            _roslynAnalyzer = roslynAnalyzer;
             _logger = logger;
         }
 
+        /// <summary>
+        /// Analyzes a single file and returns the analysis result
+        /// </summary>
         public async Task<CodeAnalysisResult> AnalyzeFileAsync(
             string filePath, 
-            string projectPath = null,
+            string repositoryId,
+            string? projectPath = null,
             CancellationToken cancellationToken = default)
         {
-            var result = new CodeAnalysisResult
-            {
-                FileId = Guid.NewGuid().ToString(),
-                FilePath = filePath,
-                ProjectId = projectPath != null ? Path.GetFileNameWithoutExtension(projectPath) : null
-            };
-
             try
             {
-                // TODO: Implement Roslyn analysis
-                // This is a placeholder for Phase 2 implementation
+                _logger.LogDebug("Starting Roslyn analysis for file {FilePath}", filePath);
                 
-                _logger.LogInformation("Analyzing file {FilePath}", filePath);
-                
-                // Placeholder: Add some dummy nodes
-                result.Nodes.Add(new Graph.Models.CodeNode
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    Name = Path.GetFileNameWithoutExtension(filePath),
-                    FullName = filePath,
-                    NodeType = Graph.Models.NodeType.File,
-                    RepositoryId = "temp",
-                    FileId = result.FileId
-                });
+                var result = await _roslynAnalyzer.AnalyzeFileAsync(
+                    filePath, 
+                    repositoryId, 
+                    projectPath, 
+                    cancellationToken);
 
-                await Task.Delay(100, cancellationToken); // Simulate work
+                _logger.LogDebug("Completed analysis for {FilePath}: {NodeCount} nodes, {RelationshipCount} relationships",
+                    filePath, result.Nodes.Count, result.Relationships.Count);
+
+                return result;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to analyze file {FilePath}", filePath);
-                result.Errors.Add($"Analysis failed: {ex.Message}");
+                
+                // Return error result
+                var errorResult = new CodeAnalysisResult
+                {
+                    FileId = Guid.NewGuid().ToString(),
+                    FilePath = filePath,
+                    RepositoryId = repositoryId,
+                    ProjectId = projectPath != null ? Path.GetFileNameWithoutExtension(projectPath) : null
+                };
+                errorResult.Errors.Add($"Analysis failed: {ex.Message}");
+                
+                return errorResult;
             }
-
-            return result;
         }
 
+        /// <summary>
+        /// Analyzes all files in a project
+        /// </summary>
         public async Task<IEnumerable<CodeAnalysisResult>> AnalyzeProjectAsync(
             string projectPath,
+            string repositoryId,
             CancellationToken cancellationToken = default)
         {
-            var results = new List<CodeAnalysisResult>();
-
             try
             {
-                _logger.LogInformation("Analyzing project {ProjectPath}", projectPath);
+                _logger.LogInformation("Starting Roslyn analysis for project {ProjectPath}", projectPath);
                 
-                // TODO: Implement project-wide Roslyn analysis
-                // This is a placeholder for Phase 2 implementation
-                
-                await Task.Delay(500, cancellationToken); // Simulate work
+                var results = await _roslynAnalyzer.AnalyzeProjectAsync(
+                    projectPath, 
+                    repositoryId, 
+                    cancellationToken);
+
+                var resultList = results.ToList();
+                _logger.LogInformation("Completed project analysis for {ProjectPath}: {FileCount} files analyzed",
+                    projectPath, resultList.Count);
+
+                return resultList;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to analyze project {ProjectPath}", projectPath);
+                
+                // Return error result
+                var errorResult = new CodeAnalysisResult
+                {
+                    ProjectId = Path.GetFileNameWithoutExtension(projectPath),
+                    RepositoryId = repositoryId
+                };
+                errorResult.Errors.Add($"Project analysis failed: {ex.Message}");
+                
+                return new[] { errorResult };
             }
+        }
 
-            return results;
+        /// <summary>
+        /// Analyzes all projects in a solution
+        /// </summary>
+        public async Task<IEnumerable<CodeAnalysisResult>> AnalyzeSolutionAsync(
+            string solutionPath,
+            string repositoryId,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation("Starting Roslyn analysis for solution {SolutionPath}", solutionPath);
+                
+                var results = await _roslynAnalyzer.AnalyzeSolutionAsync(
+                    solutionPath, 
+                    repositoryId, 
+                    cancellationToken);
+
+                var resultList = results.ToList();
+                _logger.LogInformation("Completed solution analysis for {SolutionPath}: {FileCount} files analyzed",
+                    solutionPath, resultList.Count);
+
+                return resultList;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to analyze solution {SolutionPath}", solutionPath);
+                
+                // Return error result
+                var errorResult = new CodeAnalysisResult
+                {
+                    RepositoryId = repositoryId
+                };
+                errorResult.Errors.Add($"Solution analysis failed: {ex.Message}");
+                
+                return new[] { errorResult };
+            }
         }
     }
 }

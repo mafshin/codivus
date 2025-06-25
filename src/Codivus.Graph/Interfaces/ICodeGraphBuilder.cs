@@ -69,14 +69,4 @@ namespace Codivus.Graph.Interfaces
         public double PercentComplete => TotalItems > 0 ? (double)ProcessedItems / TotalItems * 100 : 0;
     }
 
-    public class CodeAnalysisResult
-    {
-        public string FileId { get; set; }
-        public string FilePath { get; set; }
-        public string ProjectId { get; set; }
-        public List<CodeNode> Nodes { get; set; } = new();
-        public List<CodeRelationship> Relationships { get; set; } = new();
-        public Dictionary<string, object> Metadata { get; set; } = new();
-        public List<string> Errors { get; set; } = new();
-    }
 }

@@ -11,7 +11,7 @@ namespace Codivus.Core.Interfaces
         Task<string> EnqueueAsync(T task, CancellationToken cancellationToken = default);
         Task<T> DequeueAsync(CancellationToken cancellationToken = default);
         Task<T> PeekAsync(CancellationToken cancellationToken = default);
-        Task<bool> UpdateTaskStatusAsync(string taskId, QueueTaskStatus status, string message = null, CancellationToken cancellationToken = default);
+        Task<bool> UpdateTaskStatusAsync(string taskId, QueueTaskStatus status, string? message = null, CancellationToken cancellationToken = default);
         Task<T> GetTaskAsync(string taskId, CancellationToken cancellationToken = default);
         Task<IEnumerable<T>> GetTasksAsync(QueueTaskStatus? status = null, int limit = 100, CancellationToken cancellationToken = default);
         Task<int> GetQueueLengthAsync(QueueTaskStatus? status = null, CancellationToken cancellationToken = default);
@@ -31,7 +31,7 @@ namespace Codivus.Core.Interfaces
         DateTime? CompletedAt { get; set; }
         int RetryCount { get; set; }
         int MaxRetries { get; set; }
-        string ErrorMessage { get; set; }
+        string? ErrorMessage { get; set; }
         Dictionary<string, object> Metadata { get; set; }
     }
 
