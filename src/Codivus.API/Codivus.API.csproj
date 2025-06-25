@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Codivus.Core\Codivus.Core.csproj" />
+    <ProjectReference Include="..\Codivus.Graph\Codivus.Graph.csproj" />
   </ItemGroup>
 
 </Project>
