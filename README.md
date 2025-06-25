@@ -21,6 +21,25 @@ Codivus consists of three main components:
 2. **Codivus.API**: C# .NET 8 RESTful API
 3. **Codivus.Core**: Core library containing shared business logic and models
 
+### Architecture Flow Diagram
+
+![Codivus Architecture Flow](./codivus-flow-diagram.svg)
+
+The diagram above shows the complete flow of Codivus, including:
+- Frontend components and user interactions
+- API endpoints and controllers
+- Business logic services
+- LLM integration with Ollama and LMStudio
+- Data persistence layer
+- External system interactions
+
+To regenerate the diagram from source:
+```bash
+# Install D2 (https://d2lang.com/tour/install)
+# Then run:
+d2 codivus-flow-diagram.d2 codivus-flow-diagram.svg
+```
+
 ## 📝 Requirements
 
 - **.NET 8 SDK**

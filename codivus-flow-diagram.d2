@@ -1,0 +1,390 @@
+# Codivus Architecture Flow Diagram
+
+direction: down
+
+title: "Codivus - AI-Powered Code Scanning Solution" {
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+# Frontend Layer
+frontend: "Vue.js Frontend" {
+  shape: rectangle
+  style.fill: "#42b883"
+  style.stroke: "#35495e"
+  style.stroke-width: 2
+  
+  dashboard: "Dashboard View" {
+    shape: rectangle
+    style.fill: "#e8f5e9"
+  }
+  
+  repos: "Repositories View" {
+    shape: rectangle
+    style.fill: "#e8f5e9"
+  }
+  
+  add_repo: "Add Repository" {
+    shape: rectangle
+    style.fill: "#e8f5e9"
+  }
+  
+  repo_details: "Repository Details" {
+    shape: rectangle
+    style.fill: "#e8f5e9"
+  }
+  
+  scan_details: "Scan Details" {
+    shape: rectangle
+    style.fill: "#e8f5e9"
+  }
+  
+  settings: "Settings View" {
+    shape: rectangle
+    style.fill: "#e8f5e9"
+  }
+}
+
+# API Gateway
+api: "ASP.NET Core Web API" {
+  shape: rectangle
+  style.fill: "#512bd4"
+  style.stroke: "#1a0033"
+  style.stroke-width: 2
+  
+  controllers: "Controllers" {
+    shape: rectangle
+    style.fill: "#e1bee7"
+    
+    repo_ctrl: "RepositoriesController" {
+      shape: rectangle
+      endpoints: |md
+        POST /api/repositories
+        GET /api/repositories
+        GET /api/repositories/{id}
+        DELETE /api/repositories/{id}
+        POST /api/repositories/validate
+      |
+    }
+    
+    scan_ctrl: "ScanningController" {
+      shape: rectangle
+      endpoints: |md
+        POST /api/scanning/start
+        GET /api/scanning/progress/{scanId}
+        GET /api/scanning/history/{repoId}
+        GET /api/scanning/issues/{scanId}
+      |
+    }
+    
+    llm_ctrl: "LlmProvidersController" {
+      shape: rectangle
+      endpoints: |md
+        GET /api/llm-providers
+        GET /api/llm-providers/{type}/models
+        GET /api/llm-providers/{type}/status
+      |
+    }
+  }
+}
+
+# Business Logic Layer
+services: "Services Layer" {
+  shape: rectangle
+  style.fill: "#fff3e0"
+  style.stroke: "#e65100"
+  style.stroke-width: 2
+  
+  repo_svc: "RepositoryService" {
+    shape: rectangle
+    style.fill: "#ffe0b2"
+    features: |md
+      • Add/Remove repositories
+      • Validate repository access
+      • Get repository structure
+      • Manage repository metadata
+    |
+  }
+  
+  scan_svc: "ScanningService" {
+    shape: rectangle
+    style.fill: "#ffe0b2"
+    features: |md
+      • Start/Stop scans
+      • Process files concurrently
+      • Track scan progress
+      • Coordinate with LLM providers
+      • Store scan results
+    |
+  }
+  
+  llm_factory: "LlmProviderFactory" {
+    shape: rectangle
+    style.fill: "#ffe0b2"
+    features: |md
+      • Create provider instances
+      • Manage provider configuration
+      • Handle provider selection
+    |
+  }
+}
+
+# LLM Integration Layer
+llm: "LLM Providers" {
+  shape: rectangle
+  style.fill: "#e8eaf6"
+  style.stroke: "#3f51b5"
+  style.stroke-width: 2
+  
+  ollama: "OllamaProvider" {
+    shape: rectangle
+    style.fill: "#c5cae9"
+    features: |md
+      • Local AI models
+      • HTTP API integration
+      • Retry policies
+      • Model management
+    |
+  }
+  
+  lmstudio: "LmStudioProvider" {
+    shape: rectangle
+    style.fill: "#c5cae9"
+    features: |md
+      • Local AI models
+      • OpenAI-compatible API
+      • Authentication support
+      • Custom configurations
+    |
+  }
+  
+  interface: "ILlmProvider Interface" {
+    shape: rectangle
+    style.fill: "#9fa8da"
+    methods: |md
+      • AnalyzeCodeAsync()
+      • GetAvailableModelsAsync()
+      • IsAvailableAsync()
+      • GenerateFixSuggestionAsync()
+    |
+  }
+}
+
+# Data Storage Layer
+storage: "Data Storage" {
+  shape: cylinder
+  style.fill: "#ffecb3"
+  style.stroke: "#ff6f00"
+  style.stroke-width: 2
+  
+  json_store: "JsonDataStore" {
+    shape: rectangle
+    style.fill: "#ffe082"
+    features: |md
+      • File-based storage
+      • CRUD operations
+      • Atomic writes
+      • Query support
+    |
+  }
+  
+  entities: "Stored Entities" {
+    shape: rectangle
+    style.fill: "#ffe082"
+    items: |md
+      • Repositories
+      • ScanProgress
+      • CodeIssues
+      • Configurations
+    |
+  }
+}
+
+# External Systems
+external: "External Systems" {
+  shape: rectangle
+  style.fill: "#f3e5f5"
+  style.stroke: "#7b1fa2"
+  style.stroke-width: 2
+  
+  git: "Git Repositories" {
+    shape: rectangle
+    style.fill: "#e1bee7"
+    types: |md
+      • Local repositories
+      • GitHub repositories
+      • Git operations via LibGit2Sharp
+    |
+  }
+  
+  filesystem: "File System" {
+    shape: rectangle
+    style.fill: "#e1bee7"
+    operations: |md
+      • Read source files
+      • Navigate directories
+      • Store JSON data
+    |
+  }
+}
+
+# Flow Connections
+
+## User interactions
+frontend.dashboard -> api.controllers.repo_ctrl: "Get repositories"
+frontend.repos -> api.controllers.repo_ctrl: "Manage repos"
+frontend.add_repo -> api.controllers.repo_ctrl: "Validate & Add"
+frontend.repo_details -> api.controllers.scan_ctrl: "Start scan"
+frontend.scan_details -> api.controllers.scan_ctrl: "Get progress/issues"
+frontend.settings -> api.controllers.llm_ctrl: "Configure providers"
+
+## API to Services
+api.controllers.repo_ctrl -> services.repo_svc: "Repository operations"
+api.controllers.scan_ctrl -> services.scan_svc: "Scanning operations"
+api.controllers.llm_ctrl -> services.llm_factory: "Provider management"
+
+## Service interactions
+services.repo_svc -> storage.json_store: "Store/Retrieve repos"
+services.scan_svc -> storage.json_store: "Store scan results"
+services.scan_svc -> services.llm_factory: "Get LLM provider"
+services.llm_factory -> llm.ollama: "Create Ollama instance"
+services.llm_factory -> llm.lmstudio: "Create LMStudio instance"
+
+## LLM operations
+llm.ollama -> llm.interface: "Implements"
+llm.lmstudio -> llm.interface: "Implements"
+
+## External interactions
+services.repo_svc -> external.git: "Access repositories"
+services.scan_svc -> external.filesystem: "Read source files"
+storage.json_store -> external.filesystem: "Persist JSON data"
+
+# Scan Flow Detail
+scan_flow: "Detailed Scan Flow" {
+  shape: rectangle
+  style.fill: "#e0f2f1"
+  style.stroke: "#00695c"
+  style.stroke-width: 2
+  
+  step1: "1. User Initiates Scan" {
+    shape: rectangle
+    style.fill: "#b2dfdb"
+  }
+  
+  step2: "2. Create Scan Configuration" {
+    shape: rectangle
+    style.fill: "#b2dfdb"
+    config: |md
+      • File extensions
+      • Directories to include/exclude
+      • LLM provider selection
+      • Concurrency settings
+    |
+  }
+  
+  step3: "3. Collect Files" {
+    shape: rectangle
+    style.fill: "#b2dfdb"
+    process: |md
+      • Navigate repository
+      • Apply filters
+      • Check file sizes
+      • Build file list
+    |
+  }
+  
+  step4: "4. Process Files Concurrently" {
+    shape: rectangle
+    style.fill: "#b2dfdb"
+    tasks: |md
+      • Read file content
+      • Send to LLM for analysis
+      • Parse AI response
+      • Extract issues
+    |
+  }
+  
+  step5: "5. Store Results" {
+    shape: rectangle
+    style.fill: "#b2dfdb"
+    data: |md
+      • Save issues to storage
+      • Update scan progress
+      • Calculate statistics
+      • Notify frontend
+    |
+  }
+  
+  step1 -> step2: "Configure"
+  step2 -> step3: "Start"
+  step3 -> step4: "Analyze"
+  step4 -> step5: "Save"
+}
+
+# Issue Structure
+issue_model: "Code Issue Model" {
+  shape: rectangle
+  style.fill: "#fce4ec"
+  style.stroke: "#c2185b"
+  style.stroke-width: 2
+  
+  properties: |md
+    **Core Properties:**
+    • Id (Guid)
+    • FilePath (string)
+    • LineNumber (int)
+    • Title (string)
+    • Description (string)
+    
+    **Classification:**
+    • Severity (Critical/High/Medium/Low/Info)
+    • Category (Security/Performance/Quality/etc)
+    • Confidence (0.0-1.0)
+    
+    **AI Enhancement:**
+    • SuggestedFix (string)
+    • CodeSnippet (string)
+    • DetectionMethod (AI/Rule-based)
+  |
+}
+
+# Real-time Updates
+realtime: "Real-time Features" {
+  shape: rectangle
+  style.fill: "#f1f8e9"
+  style.stroke: "#558b2f"
+  style.stroke-width: 2
+  
+  websocket: "WebSocket Support" {
+    shape: rectangle
+    style.fill: "#dcedc8"
+    updates: |md
+      • Scan progress updates
+      • Issue count changes
+      • Status notifications
+      • Error alerts
+    |
+  }
+  
+  frontend.scan_details -> websocket: "Subscribe"
+  websocket -> api.controllers.scan_ctrl: "Progress updates"
+}
+
+# Legend
+legend: "Key Components" {
+  shape: rectangle
+  style.fill: "#f5f5f5"
+  style.stroke: "#616161"
+  style.stroke-width: 1
+  style.stroke-dash: 3
+  
+  legend_items: |md
+    **Frontend**: Vue.js SPA with Pinia state management
+    **API**: RESTful endpoints with global error handling
+    **Services**: Business logic with dependency injection
+    **LLM**: AI providers for code analysis
+    **Storage**: JSON-based file persistence
+    **External**: Git repos and file system access
+  |
+}
