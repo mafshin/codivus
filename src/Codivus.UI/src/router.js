@@ -39,11 +39,6 @@ const routes = [
     component: () => import('@/views/SettingsView.vue')
   },
   {
-    path: '/debug/file-tree',
-    name: 'DebugFileTree',
-    component: () => import('@/components/debug/DebugFileTree.vue')
-  },
-  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFoundView.vue')
