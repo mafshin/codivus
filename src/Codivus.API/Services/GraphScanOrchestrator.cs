@@ -4,13 +4,14 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Codivus.API.Interfaces;
 using Codivus.Core.Interfaces;
 using Codivus.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Codivus.API.Services
 {
-    public class GraphScanOrchestrator
+    public class GraphScanOrchestrator : IGraphScanOrchestrator
     {
         private readonly ITaskQueue<GraphScanTask> _taskQueue;
         private readonly IRepositoryService _repositoryService;
@@ -103,7 +104,7 @@ namespace Codivus.API.Services
             return files;
         }
 
-        public async Task<GraphScanProgress> GetScanProgressAsync(string scanId)
+        public async Task<GraphScanProgress?> GetScanProgressAsync(string scanId)
         {
             await _progressLock.WaitAsync();
             try

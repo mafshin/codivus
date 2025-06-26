@@ -81,13 +81,14 @@ builder.Services.AddSingleton<LlmProviderFactory>();
 // Configure Graph services
 builder.Services.Configure<GraphConfiguration>(builder.Configuration.GetSection("Graph"));
 builder.Services.AddSingleton<IGraphStorageService, GraphStorageService>();
+builder.Services.AddSingleton<IGraphQueryService, GraphQueryService>();
 builder.Services.AddSingleton<IRoslynAnalyzer, RoslynAnalyzer>();
 builder.Services.AddSingleton<IRoslynAnalysisService, RoslynAnalysisService>();
 builder.Services.AddSingleton<IGraphScanProcessor, GraphScanProcessor>();
 
 // Register task queue for graph scanning
 builder.Services.AddSingleton<ITaskQueue<GraphScanTask>, TaskQueueService<GraphScanTask>>();
-builder.Services.AddSingleton<GraphScanOrchestrator>();
+builder.Services.AddSingleton<IGraphScanOrchestrator, GraphScanOrchestrator>();
 
 // Register background services
 builder.Services.AddHostedService<GraphScanWorker>();

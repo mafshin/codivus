@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Codivus.Graph.Interfaces;
 using Codivus.Graph.Models;
+using Codivus.Core.Models;
+using Codivus.API.Interfaces;
+using Codivus.API.Services;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -14,17 +17,121 @@ namespace Codivus.API.Controllers
     {
         private readonly IGraphQueryService _graphQueryService;
         private readonly IGraphStorageService _graphStorageService;
+        private readonly IGraphScanOrchestrator _graphScanOrchestrator;
         private readonly ILogger<GraphController> _logger;
 
         public GraphController(
             IGraphQueryService graphQueryService,
             IGraphStorageService graphStorageService,
+            IGraphScanOrchestrator graphScanOrchestrator,
             ILogger<GraphController> logger)
         {
             _graphQueryService = graphQueryService;
             _graphStorageService = graphStorageService;
+            _graphScanOrchestrator = graphScanOrchestrator;
             _logger = logger;
         }
+
+        // Phase 5: Graph Scanning Endpoints
+
+        [HttpPost("scan/{repositoryId}")]
+        public async Task<IActionResult> StartGraphScan(string repositoryId, [FromBody] GraphScanRequestDto request)
+        {
+            try
+            {
+                var configuration = new GraphScanConfiguration
+                {
+                    RepositoryId = repositoryId,
+                    Mode = request.Mode,
+                    Processing = request.Processing ?? new ProcessingConfiguration(),
+                    Analysis = request.Analysis ?? new AnalysisConfiguration(),
+                    Relationships = request.Relationships ?? new RelationshipConfiguration(),
+                    Metrics = request.Metrics ?? new MetricsConfiguration()
+                };
+
+                var scanId = await _graphScanOrchestrator.StartGraphScanAsync(repositoryId, configuration);
+                
+                return Ok(new { scanId, message = "Graph scan started successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error starting graph scan for repository {RepositoryId}", repositoryId);
+                return StatusCode(500, new { error = "Failed to start graph scan", message = ex.Message });
+            }
+        }
+
+        [HttpGet("scan/{scanId}/status")]
+        public async Task<IActionResult> GetGraphScanStatus(string scanId)
+        {
+            try
+            {
+                var progress = await _graphScanOrchestrator.GetScanProgressAsync(scanId);
+                if (progress == null)
+                    return NotFound(new { error = "Scan not found" });
+
+                return Ok(progress);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving scan status for {ScanId}", scanId);
+                return StatusCode(500, new { error = "Failed to retrieve scan status", message = ex.Message });
+            }
+        }
+
+        [HttpPost("scan/{scanId}/pause")]
+        public async Task<IActionResult> PauseGraphScan(string scanId)
+        {
+            try
+            {
+                var success = await _graphScanOrchestrator.PauseScanAsync(scanId);
+                if (!success)
+                    return NotFound(new { error = "Scan not found or cannot be paused" });
+
+                return Ok(new { message = "Scan paused successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error pausing scan {ScanId}", scanId);
+                return StatusCode(500, new { error = "Failed to pause scan", message = ex.Message });
+            }
+        }
+
+        [HttpPost("scan/{scanId}/resume")]
+        public async Task<IActionResult> ResumeGraphScan(string scanId)
+        {
+            try
+            {
+                var success = await _graphScanOrchestrator.ResumeScanAsync(scanId);
+                if (!success)
+                    return NotFound(new { error = "Scan not found or cannot be resumed" });
+
+                return Ok(new { message = "Scan resumed successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resuming scan {ScanId}", scanId);
+                return StatusCode(500, new { error = "Failed to resume scan", message = ex.Message });
+            }
+        }
+
+        [HttpPost("scan/{scanId}/cancel")]
+        public async Task<IActionResult> CancelGraphScan(string scanId)
+        {
+            try
+            {
+                var success = await _graphScanOrchestrator.CancelScanAsync(scanId);
+                if (!success)
+                    return NotFound(new { error = "Scan not found or cannot be cancelled" });
+
+                return Ok(new { message = "Scan cancelled successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cancelling scan {ScanId}", scanId);
+                return StatusCode(500, new { error = "Failed to cancel scan", message = ex.Message });
+            }
+        }
+
 
         [HttpGet("nodes")]
         public async Task<IActionResult> GetNodes(
@@ -226,7 +333,7 @@ namespace Codivus.API.Controllers
         }
 
         [HttpPost("query")]
-        public async Task<IActionResult> ExecuteCustomQuery([FromBody] CustomQueryRequestDto request)
+        public async Task<IActionResult> ExecuteCustomQuery([FromBody] GraphQueryRequestDto request)
         {
             try
             {
@@ -351,6 +458,24 @@ namespace Codivus.API.Controllers
         }
     }
 
+    // Phase 5: DTOs for Graph Scanning
+    public class GraphScanRequestDto
+    {
+        public ScanMode Mode { get; set; } = ScanMode.Incremental;
+        public ProcessingConfiguration? Processing { get; set; }
+        public AnalysisConfiguration? Analysis { get; set; }
+        public RelationshipConfiguration? Relationships { get; set; }
+        public MetricsConfiguration? Metrics { get; set; }
+    }
+
+    public class GraphQueryRequestDto
+    {
+        public string Query { get; set; } = string.Empty;
+        public Dictionary<string, object>? Parameters { get; set; }
+        public int? Limit { get; set; }
+        public string? Format { get; set; } = "json";
+    }
+
     // DTOs for request bodies
     public class ImpactAnalysisRequestDto
     {
@@ -368,9 +493,4 @@ namespace Codivus.API.Controllers
         public List<string>? IncludeRelationshipTypes { get; set; }
     }
 
-    public class CustomQueryRequestDto
-    {
-        public string Query { get; set; } = string.Empty;
-        public Dictionary<string, object>? Parameters { get; set; }
-    }
 }
