@@ -6,11 +6,13 @@ using Codivus.Graph.Configuration;
 using Codivus.Graph.Interfaces;
 using Codivus.Graph.Models;
 using Codivus.Graph.Services;
+using Codivus.Graph.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Codivus.Graph.Tests.Integration
 {
@@ -30,12 +32,6 @@ namespace Codivus.Graph.Tests.Integration
 
         public JanusGraphIntegrationTests()
         {
-            // Skip tests if not in development environment
-            if (IsRunningInCI())
-            {
-                Skip.If(true, "Integration tests are disabled in CI/CD environments");
-            }
-
             _testRepositoryId = $"test-repo-{Guid.NewGuid()}";
 
             var configuration = new GraphConfiguration
@@ -61,17 +57,12 @@ namespace Codivus.Graph.Tests.Integration
             _graphQueryService = new GraphQueryService(_graphStorageService, queryLogger);
         }
 
-        private static bool IsRunningInCI()
-        {
-            return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")) ||
-                   !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")) ||
-                   !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TF_BUILD"));
-        }
 
-        [Fact]
+        [SkippableFact]
         public async Task GraphStorageService_InitializeAsync_ShouldConnectSuccessfully()
         {
-            Skip.If(IsRunningInCI(), "Integration test disabled in CI");
+            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            Xunit.Skip.If(skipReason != null, skipReason);
 
             // Act
             var result = await _graphStorageService.InitializeAsync();
@@ -80,10 +71,11 @@ namespace Codivus.Graph.Tests.Integration
             result.Should().BeTrue();
         }
 
-        [Fact]
+        [SkippableFact]
         public async Task GraphStorageService_CreateSchema_ShouldCreateIndicesAndLabels()
         {
-            Skip.If(IsRunningInCI(), "Integration test disabled in CI");
+            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            Xunit.Skip.If(skipReason != null, skipReason);
 
             // Arrange
             await _graphStorageService.InitializeAsync();
@@ -95,10 +87,11 @@ namespace Codivus.Graph.Tests.Integration
             result.Should().BeTrue();
         }
 
-        [Fact]
+        [SkippableFact]
         public async Task GraphStorageService_NodeOperations_ShouldWorkEndToEnd()
         {
-            Skip.If(IsRunningInCI(), "Integration test disabled in CI");
+            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            Xunit.Skip.If(skipReason != null, skipReason);
 
             // Arrange
             await _graphStorageService.InitializeAsync();
@@ -175,10 +168,11 @@ namespace Codivus.Graph.Tests.Integration
             }
         }
 
-        [Fact]
+        [SkippableFact]
         public async Task GraphStorageService_RelationshipOperations_ShouldWorkEndToEnd()
         {
-            Skip.If(IsRunningInCI(), "Integration test disabled in CI");
+            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            Xunit.Skip.If(skipReason != null, skipReason);
 
             // Arrange
             await _graphStorageService.InitializeAsync();
@@ -279,10 +273,11 @@ namespace Codivus.Graph.Tests.Integration
             }
         }
 
-        [Fact]
+        [SkippableFact]
         public async Task GraphQueryService_FindNodesByName_ShouldFindCreatedNodes()
         {
-            Skip.If(IsRunningInCI(), "Integration test disabled in CI");
+            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            Xunit.Skip.If(skipReason != null, skipReason);
 
             // Arrange
             await _graphStorageService.InitializeAsync();
@@ -329,10 +324,11 @@ namespace Codivus.Graph.Tests.Integration
             }
         }
 
-        [Fact]
+        [SkippableFact]
         public async Task GraphQueryService_GetDependencies_ShouldReturnRelatedNodes()
         {
-            Skip.If(IsRunningInCI(), "Integration test disabled in CI");
+            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            Xunit.Skip.If(skipReason != null, skipReason);
 
             // Arrange
             await _graphStorageService.InitializeAsync();
@@ -406,10 +402,11 @@ namespace Codivus.Graph.Tests.Integration
             }
         }
 
-        [Fact]
+        [SkippableFact]
         public async Task GraphStorageService_MaintenanceOperations_ShouldCompleteSuccessfully()
         {
-            Skip.If(IsRunningInCI(), "Integration test disabled in CI");
+            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            Xunit.Skip.If(skipReason != null, skipReason);
 
             // Arrange
             await _graphStorageService.InitializeAsync();
@@ -423,10 +420,11 @@ namespace Codivus.Graph.Tests.Integration
             orphanedCount.Should().BeGreaterOrEqualTo(0);
         }
 
-        [Fact]
+        [SkippableFact]
         public async Task GraphStorageService_GetMetrics_ShouldReturnValidMetrics()
         {
-            Skip.If(IsRunningInCI(), "Integration test disabled in CI");
+            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            Xunit.Skip.If(skipReason != null, skipReason);
 
             // Arrange
             await _graphStorageService.InitializeAsync();
@@ -441,10 +439,11 @@ namespace Codivus.Graph.Tests.Integration
             metrics.EdgeCount.Should().BeGreaterOrEqualTo(0);
         }
 
-        [Fact]
+        [SkippableFact]
         public async Task GraphStorageService_BatchOperations_ShouldWorkCorrectly()
         {
-            Skip.If(IsRunningInCI(), "Integration test disabled in CI");
+            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            Xunit.Skip.If(skipReason != null, skipReason);
 
             // Arrange
             await _graphStorageService.InitializeAsync();
@@ -508,7 +507,7 @@ namespace Codivus.Graph.Tests.Integration
             try
             {
                 // Cleanup test repository data
-                if (!IsRunningInCI())
+                if (!JanusGraphTestHelper.IsRunningInCI())
                 {
                     _graphStorageService?.ClearGraphAsync(_testRepositoryId)?.Wait(5000);
                 }
@@ -522,27 +521,4 @@ namespace Codivus.Graph.Tests.Integration
         }
     }
 
-    /// <summary>
-    /// Helper class for conditional test skipping
-    /// </summary>
-    public static class Skip
-    {
-        public static void If(bool condition, string reason)
-        {
-            if (condition)
-            {
-                throw new SkipException(reason);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Exception to indicate a test should be skipped
-    /// </summary>
-    public class SkipException : Exception
-    {
-        public SkipException(string reason) : base(reason)
-        {
-        }
-    }
 }
