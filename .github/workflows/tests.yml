@@ -27,6 +27,7 @@ jobs:
     
     - name: Restore .NET dependencies
       run: dotnet restore
+      working-directory: src
     
     - name: Install Node.js dependencies
       run: |
@@ -35,6 +36,7 @@ jobs:
     
     - name: Build .NET solution
       run: dotnet build --no-restore
+      working-directory: src
     
     - name: Build UI
       run: |
@@ -43,6 +45,7 @@ jobs:
     
     - name: Run Tests (CI Compatible - Excludes Docker Dependencies)
       run: dotnet test --logger "console;verbosity=normal" --filter "Category!=RequiresDocker" --no-build
+      working-directory: src
     
     - name: Test Summary
       if: always()

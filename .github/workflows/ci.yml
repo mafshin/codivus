@@ -36,6 +36,7 @@ jobs:
     
     - name: Restore .NET dependencies
       run: dotnet restore
+      working-directory: src
     
     - name: Install Node.js dependencies
       run: |
@@ -44,6 +45,7 @@ jobs:
     
     - name: Build .NET solution
       run: dotnet build --no-restore --configuration Release
+      working-directory: src
     
     - name: Lint UI code
       run: |
@@ -57,6 +59,7 @@ jobs:
     
     - name: Run Unit Tests (Excludes Docker Dependencies)
       run: dotnet test --logger "console;verbosity=normal" --filter "Category!=RequiresDocker" --no-build --configuration Release --collect:"XPlat Code Coverage"
+      working-directory: src
     
     - name: Upload coverage reports to Codecov
       if: success()
