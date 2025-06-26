@@ -239,9 +239,9 @@ namespace Codivus.Graph.Services
             return analysis;
         }
 
-        public async Task<DependencyGraph> GetFileDependencyGraphAsync(string repositoryId, string filePath, CancellationToken cancellationToken = default)
+        public async Task<Interfaces.DependencyGraph> GetFileDependencyGraphAsync(string repositoryId, string filePath, CancellationToken cancellationToken = default)
         {
-            var graph = new DependencyGraph
+            var graph = new Interfaces.DependencyGraph
             {
                 RootFile = filePath
             };
@@ -621,7 +621,7 @@ namespace Codivus.Graph.Services
             return new List<FileDependency>();
         }
 
-        private Dictionary<string, int> CalculateDependencyLevels(DependencyGraph graph)
+        private Dictionary<string, int> CalculateDependencyLevels(Interfaces.DependencyGraph graph)
         {
             var levels = new Dictionary<string, int>();
             

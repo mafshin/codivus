@@ -55,6 +55,65 @@ See [Installation Guide](./docs/installation.md) for detailed setup instructions
 
 See [Development Guide](./docs/development.md) for information on project structure and contribution guidelines.
 
+## 🧪 Testing
+
+### Test Categories
+
+#### Unit Tests (Default)
+- **What**: Tests with mocked dependencies
+- **When**: Run in all environments (local, CI/CD)
+- **Coverage**: Core business logic, controllers, services
+
+#### Integration Tests  
+- **What**: Tests requiring external services
+- **When**: Local development only
+- **Types**: JanusGraph database tests, LLM service tests
+
+### Commands for Different Environments
+
+#### For GitHub Actions / CI/CD
+```bash
+# Use this command in GitHub Actions workflows
+dotnet test --logger "console;verbosity=normal" --filter "Category!=RequiresDocker"
+```
+
+This excludes all tests that require external Docker services, ensuring CI/CD pipelines run successfully without service dependencies.
+
+#### For Local Development
+
+```bash
+# Run all tests (including integration)
+dotnet test
+
+# Unit tests only
+dotnet test --filter "Category!=Integration"
+
+# LLM integration tests only
+dotnet test --filter "Category=LLM"
+
+# Phase 7 LLM unit tests
+dotnet test --filter "GraphEmbeddingServiceTests|ContextualPromptBuilderTests|GraphEnhancedScanningServiceTests|EnhancedScanningControllerTests"
+```
+
+### Integration Test Requirements
+
+#### LLM Integration Tests
+- **Service**: OpenAI-compatible LLM at `http://host.docker.internal:1234`
+- **Tests**: 6 tests covering connectivity, code analysis, security analysis
+- **Status**: ✅ Working with real LLM calls
+
+#### JanusGraph Integration Tests
+- **Service**: JanusGraph at `host.docker.internal:8182`
+- **Tests**: 9 tests covering graph operations
+- **Status**: Properly skipped when service unavailable
+
+### Test Coverage Summary
+
+- **Total Tests**: ~250 tests
+- **Unit Tests**: ~240 tests (run in CI/CD)
+- **Integration Tests**: ~15 tests (local development only)
+- **Phase 7 LLM**: 43 tests total (37 unit + 6 integration)
+
 ## 📚 Documentation
 
 Complete documentation can be found in the [docs](./docs/) directory.

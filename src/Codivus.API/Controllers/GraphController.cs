@@ -39,7 +39,7 @@ namespace Codivus.API.Controllers
         {
             try
             {
-                var configuration = new GraphScanConfiguration
+                var configuration = new Core.Models.GraphScanConfiguration
                 {
                     RepositoryId = repositoryId,
                     Mode = request.Mode,

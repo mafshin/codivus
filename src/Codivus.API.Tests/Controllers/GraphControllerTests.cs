@@ -61,7 +61,7 @@ namespace Codivus.API.Tests.Controllers
             _mockGraphScanOrchestrator
                 .Setup(x => x.StartGraphScanAsync(
                     It.IsAny<string>(),
-                    It.IsAny<GraphScanConfiguration>(),
+                    It.IsAny<Core.Models.GraphScanConfiguration>(),
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync(expectedScanId);
 
@@ -88,7 +88,7 @@ namespace Codivus.API.Tests.Controllers
             _mockGraphScanOrchestrator
                 .Setup(x => x.StartGraphScanAsync(
                     It.IsAny<string>(),
-                    It.IsAny<GraphScanConfiguration>(),
+                    It.IsAny<Core.Models.GraphScanConfiguration>(),
                     It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new Exception("Test exception"));
 

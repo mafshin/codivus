@@ -86,6 +86,11 @@ builder.Services.AddSingleton<IRoslynAnalyzer, RoslynAnalyzer>();
 builder.Services.AddSingleton<IRoslynAnalysisService, RoslynAnalysisService>();
 builder.Services.AddSingleton<IGraphScanProcessor, GraphScanProcessor>();
 
+// Register Phase 7 LLM Integration services
+builder.Services.AddSingleton<IGraphEmbeddingService, GraphEmbeddingService>();
+builder.Services.AddSingleton<IContextualPromptBuilder, ContextualPromptBuilder>();
+builder.Services.AddSingleton<IGraphEnhancedScanningService, GraphEnhancedScanningService>();
+
 // Register task queue for graph scanning
 builder.Services.AddSingleton<ITaskQueue<GraphScanTask>, TaskQueueService<GraphScanTask>>();
 builder.Services.AddSingleton<IGraphScanOrchestrator, GraphScanOrchestrator>();
