@@ -10,13 +10,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Codivus.API.Services
 {
-    public class TaskQueueService<T> : ITaskQueue<T> where T : IQueueTask
+    public class TaskQueueService<T> : ITaskQueue<T> where T : class, IQueueTask
     {
         private readonly ConcurrentDictionary<string, T> _tasks = new();
         private readonly ConcurrentQueue<string> _pendingQueue = new();
         private readonly ConcurrentDictionary<QueueTaskStatus, ConcurrentBag<string>> _tasksByStatus = new();
         private readonly SemaphoreSlim _queueSemaphore = new(0);
         private readonly ILogger<TaskQueueService<T>> _logger;
+        
+        protected ILogger<TaskQueueService<T>> Logger => _logger;
 
         public TaskQueueService(ILogger<TaskQueueService<T>> logger)
         {
@@ -219,6 +221,11 @@ namespace Codivus.API.Services
             return Task.CompletedTask;
         }
 
+        protected Task<IEnumerable<T>> GetAllTasksAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IEnumerable<T>>(_tasks.Values);
+        }
+
         private string GetNextTaskId(bool peek = false)
         {
             // Priority-based dequeue
@@ -268,7 +275,7 @@ namespace Codivus.API.Services
     }
 
     // Persistent task queue implementation
-    public class PersistentTaskQueueService<T> : TaskQueueService<T>, IPersistentTaskQueue<T> where T : IQueueTask
+    public class PersistentTaskQueueService<T> : TaskQueueService<T>, IPersistentTaskQueue<T> where T : class, IQueueTask
     {
         private readonly IDataStore _dataStore;
         private readonly string _queueName;
@@ -286,10 +293,21 @@ namespace Codivus.API.Services
             return await _dataStore.SaveAsync(key, checkpointData, cancellationToken);
         }
 
-        public async Task<object> GetCheckpointAsync(string taskId, CancellationToken cancellationToken = default)
+        public async Task<TCheckpoint?> GetCheckpointAsync<TCheckpoint>(string taskId, CancellationToken cancellationToken = default)
         {
             var key = $"{_queueName}:checkpoint:{taskId}";
-            return await _dataStore.GetAsync<object>(key, cancellationToken);
+            return await _dataStore.GetAsync<TCheckpoint>(key, cancellationToken);
+        }
+
+        public async Task<object?> GetCheckpointAsync(string taskId, CancellationToken cancellationToken = default)
+        {
+            return await GetCheckpointAsync<object>(taskId, cancellationToken);
+        }
+
+        public async Task<bool> ClearCheckpointAsync(string taskId, CancellationToken cancellationToken = default)
+        {
+            var key = $"{_queueName}:checkpoint:{taskId}";
+            return await _dataStore.DeleteAsync(key, cancellationToken);
         }
 
         public async Task<IEnumerable<T>> GetStaleTasksAsync(TimeSpan timeout, CancellationToken cancellationToken = default)

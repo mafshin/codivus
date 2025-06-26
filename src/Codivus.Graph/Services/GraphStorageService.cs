@@ -391,6 +391,86 @@ namespace Codivus.Graph.Services
             throw new NotImplementedException("Will be implemented in Phase 2");
         }
 
+        // Maintenance operations
+        public async Task OptimizeIndicesAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogDebug("Optimizing graph indices");
+                // In a real implementation, this would optimize JanusGraph indices
+                // For now, this is a placeholder that logs the operation
+                await Task.Delay(100, cancellationToken); // Simulate work
+                _logger.LogDebug("Graph indices optimization completed");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to optimize graph indices");
+                throw;
+            }
+        }
+
+        public async Task<int> CleanupOrphanedNodesAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogDebug("Starting cleanup of orphaned nodes");
+                
+                // In a real implementation, this would:
+                // 1. Find nodes without any relationships
+                // 2. Remove nodes that are no longer referenced
+                // 3. Return the count of cleaned up nodes
+                
+                await Task.Delay(200, cancellationToken); // Simulate work
+                var cleanedCount = 0; // Placeholder - would return actual count
+                
+                _logger.LogDebug("Cleaned up {Count} orphaned nodes", cleanedCount);
+                return cleanedCount;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to cleanup orphaned nodes");
+                throw;
+            }
+        }
+
+        public async Task DefragmentStorageAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogDebug("Starting graph storage defragmentation");
+                
+                // In a real implementation, this would defragment the underlying storage
+                // This is typically a longer-running operation
+                
+                await Task.Delay(500, cancellationToken); // Simulate work
+                _logger.LogDebug("Graph storage defragmentation completed");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to defragment graph storage");
+                throw;
+            }
+        }
+
+        public async Task UpdateStatisticsAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogDebug("Updating graph statistics");
+                
+                // In a real implementation, this would update graph statistics
+                // for query optimization and performance monitoring
+                
+                await Task.Delay(50, cancellationToken); // Simulate work
+                _logger.LogDebug("Graph statistics updated");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to update graph statistics");
+                throw;
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed)

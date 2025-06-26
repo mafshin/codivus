@@ -6,7 +6,7 @@ using Codivus.Core.Models;
 
 namespace Codivus.Core.Interfaces
 {
-    public interface ITaskQueue<T> where T : IQueueTask
+    public interface ITaskQueue<T> where T : class, IQueueTask
     {
         Task<string> EnqueueAsync(T task, CancellationToken cancellationToken = default);
         Task<T> DequeueAsync(CancellationToken cancellationToken = default);
@@ -35,10 +35,12 @@ namespace Codivus.Core.Interfaces
         Dictionary<string, object> Metadata { get; set; }
     }
 
-    public interface IPersistentTaskQueue<T> : ITaskQueue<T> where T : IQueueTask
+    public interface IPersistentTaskQueue<T> : ITaskQueue<T> where T : class, IQueueTask
     {
         Task<bool> SaveCheckpointAsync(string taskId, object checkpointData, CancellationToken cancellationToken = default);
-        Task<object> GetCheckpointAsync(string taskId, CancellationToken cancellationToken = default);
+        Task<TCheckpoint?> GetCheckpointAsync<TCheckpoint>(string taskId, CancellationToken cancellationToken = default);
+        Task<object?> GetCheckpointAsync(string taskId, CancellationToken cancellationToken = default);
+        Task<bool> ClearCheckpointAsync(string taskId, CancellationToken cancellationToken = default);
         Task<IEnumerable<T>> GetStaleTasksAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
         Task<bool> ArchiveCompletedTasksAsync(TimeSpan olderThan, CancellationToken cancellationToken = default);
     }

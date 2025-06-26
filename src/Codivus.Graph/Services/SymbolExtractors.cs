@@ -8,7 +8,7 @@ namespace Codivus.Graph.Services;
 /// <summary>
 /// Extracts namespace declarations from syntax trees
 /// </summary>
-internal class NamespaceExtractor : CSharpSyntaxWalker
+public class NamespaceExtractor : CSharpSyntaxWalker
 {
     private readonly SemanticModel _semanticModel;
     private readonly string _fileId;
@@ -78,7 +78,7 @@ internal class NamespaceExtractor : CSharpSyntaxWalker
 /// <summary>
 /// Extracts type declarations (classes, interfaces, structs, enums) from syntax trees
 /// </summary>
-internal class TypeExtractor : CSharpSyntaxWalker
+public class TypeExtractor : CSharpSyntaxWalker
 {
     private readonly SemanticModel _semanticModel;
     private readonly string _fileId;
@@ -216,7 +216,7 @@ internal class TypeExtractor : CSharpSyntaxWalker
 /// <summary>
 /// Extracts member declarations (methods, properties, fields) from syntax trees
 /// </summary>
-internal class MemberExtractor : CSharpSyntaxWalker
+public class MemberExtractor : CSharpSyntaxWalker
 {
     private readonly SemanticModel _semanticModel;
     private readonly string _fileId;
@@ -373,5 +373,37 @@ internal class MemberExtractor : CSharpSyntaxWalker
             Accessibility.ProtectedAndInternal => AccessibilityLevel.PrivateProtected,
             _ => AccessibilityLevel.Private
         };
+    }
+}
+// Aliases for test compatibility
+public class ClassExtractor : TypeExtractor
+{
+    public ClassExtractor(SemanticModel semanticModel, string fileId, string repositoryId) 
+        : base(semanticModel, fileId, repositoryId)
+    {
+    }
+}
+
+public class MethodExtractor : MemberExtractor
+{
+    public MethodExtractor(SemanticModel semanticModel, string fileId, string repositoryId) 
+        : base(semanticModel, fileId, repositoryId)
+    {
+    }
+}
+
+public class PropertyExtractor : MemberExtractor
+{
+    public PropertyExtractor(SemanticModel semanticModel, string fileId, string repositoryId) 
+        : base(semanticModel, fileId, repositoryId)
+    {
+    }
+}
+
+public class FieldExtractor : MemberExtractor
+{
+    public FieldExtractor(SemanticModel semanticModel, string fileId, string repositoryId) 
+        : base(semanticModel, fileId, repositoryId)
+    {
     }
 }

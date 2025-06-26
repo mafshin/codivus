@@ -42,6 +42,12 @@ namespace Codivus.Graph.Interfaces
         
         // Transactions
         Task<IGraphTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
+
+        // Maintenance operations
+        Task OptimizeIndicesAsync(CancellationToken cancellationToken = default);
+        Task<int> CleanupOrphanedNodesAsync(CancellationToken cancellationToken = default);
+        Task DefragmentStorageAsync(CancellationToken cancellationToken = default);
+        Task UpdateStatisticsAsync(CancellationToken cancellationToken = default);
     }
 
     public interface IGraphTransaction : IDisposable

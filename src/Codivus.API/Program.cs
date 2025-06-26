@@ -61,6 +61,10 @@ builder.Services.AddOptions();
 builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("LLM:Ollama"));
 builder.Services.Configure<LmStudioOptions>(builder.Configuration.GetSection("LLM:LMStudio"));
 
+// Configure Graph Processing options
+builder.Services.Configure<GraphScanningOptions>(builder.Configuration.GetSection(GraphScanningOptions.SectionName));
+builder.Services.Configure<GraphMaintenanceOptions>(builder.Configuration.GetSection(GraphMaintenanceOptions.SectionName));
+
 // Register data store
 builder.Services.AddSingleton<JsonDataStore>();
 
@@ -87,6 +91,7 @@ builder.Services.AddSingleton<GraphScanOrchestrator>();
 
 // Register background services
 builder.Services.AddHostedService<GraphScanWorker>();
+builder.Services.AddHostedService<GraphMaintenanceWorker>();
 
 var app = builder.Build();
 
