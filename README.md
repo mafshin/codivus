@@ -9,17 +9,21 @@ A modern, AI-powered code scanning solution designed to analyze code repositorie
 - **Real-time scanning dashboard**: Monitor scanning progress in real-time
 - **Interactive repository visualization**: Browse repository file structure through an interactive graph
 - **AI-powered analysis**: Leverage Ollama and LMStudio for advanced code analysis
+- **Graph-based code analysis**: Advanced semantic code understanding with JanusGraph
+- **Contextual prompt building**: Enhanced LLM prompts using code graph context
+- **Symbol relationship detection**: Automatic detection of code dependencies and relationships
 - **IssueHunter integration**: Advanced issue detection and categorization
 - **Local and GitHub repository support**: Scan code from local paths or GitHub repositories
 - **Modern tech stack**: Vue.js front-end, C# .NET 8 back-end
 
 ## 🏗️ Architecture
 
-Codivus consists of three main components:
+Codivus consists of four main components:
 
 1. **Codivus.UI**: Vue.js-based front-end application
 2. **Codivus.API**: C# .NET 8 RESTful API
 3. **Codivus.Core**: Core library containing shared business logic and models
+4. **Codivus.Graph**: Advanced graph-based analysis with JanusGraph integration
 
 ### Architecture Flow Diagram
 
@@ -46,6 +50,7 @@ d2 codivus-flow-diagram.d2 codivus-flow-diagram.svg
 - **Node.js** v16+
 - **npm** v7+
 - **Local LLM provider** (Ollama or LMStudio)
+- **JanusGraph** (optional, for advanced graph analysis)
 
 ## 🔧 Setup and Installation
 
@@ -109,10 +114,11 @@ dotnet test --filter "GraphEmbeddingServiceTests|ContextualPromptBuilderTests|Gr
 
 ### Test Coverage Summary
 
-- **Total Tests**: ~250 tests
+- **Total Tests**: ~250 tests across all projects
 - **Unit Tests**: ~240 tests (run in CI/CD)
 - **Integration Tests**: ~15 tests (local development only)
-- **Phase 7 LLM**: 43 tests total (37 unit + 6 integration)
+- **Graph Module**: 43 tests total (37 unit + 6 integration)
+- **Components**: API, Core, Graph, and UI test suites
 
 ## 📚 Documentation
 

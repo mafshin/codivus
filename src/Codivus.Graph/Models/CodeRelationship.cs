@@ -29,6 +29,7 @@ namespace Codivus.Graph.Models
         public RelationshipType Type { get; set; }
         public Dictionary<string, object> Properties { get; set; } = new();
         public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
         public int? UsageCount { get; set; }
         public string Context { get; set; }
         public int? StartLine { get; set; }

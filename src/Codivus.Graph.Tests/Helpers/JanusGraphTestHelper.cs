@@ -47,9 +47,12 @@ namespace Codivus.Graph.Tests.Helpers
             try
             {
                 using var httpClient = new System.Net.Http.HttpClient();
-                httpClient.Timeout = TimeSpan.FromSeconds(5);
+                httpClient.Timeout = TimeSpan.FromSeconds(2);
                 
-                var response = await httpClient.GetAsync($"http://{host}:{port}/");
+                // Try a POST to /gremlin which should respond quickly with WebSocket error
+                var content = new System.Net.Http.StringContent("{\"gremlin\":\"g.V().count()\"}", 
+                    System.Text.Encoding.UTF8, "application/json");
+                var response = await httpClient.PostAsync($"http://{host}:{port}/gremlin", content);
                 
                 // Even if we get an error response, if we get any response, the server is running
                 return true;
