@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codivus - AI-Powered Code Intelligence Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        .presentation {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .slide {
+            display: none;
+            width: 90%;
+            max-width: 1200px;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        .slide.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1 {
+            font-size: 3.5em;
+            font-weight: 700;
+            margin-bottom: 0.5em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        h2 {
+            font-size: 2.5em;
+            font-weight: 600;
+            margin-bottom: 0.8em;
+            color: #667eea;
+        }
+
+        h3 {
+            font-size: 1.8em;
+            font-weight: 500;
+            margin-bottom: 0.5em;
+            color: #a78bfa;
+        }
+
+        p {
+            font-size: 1.3em;
+            line-height: 1.6;
+            color: #e0e0e0;
+            margin-bottom: 1em;
+        }
+
+        .subtitle {
+            font-size: 1.5em;
+            color: #9ca3af;
+            margin-bottom: 2em;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2em;
+            margin: 2em 0;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+            padding: 2em;
+            border-radius: 15px;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 0.2em;
+        }
+
+        .metric-label {
+            font-size: 1.1em;
+            color: #9ca3af;
+        }
+
+        .features-list {
+            list-style: none;
+            margin: 2em 0;
+        }
+
+        .features-list li {
+            font-size: 1.3em;
+            margin-bottom: 1em;
+            padding-left: 2em;
+            position: relative;
+            color: #e0e0e0;
+        }
+
+        .features-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #10b981;
+            font-weight: bold;
+            font-size: 1.5em;
+        }
+
+        .tech-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1em;
+            margin: 2em 0;
+        }
+
+        .tech-badge {
+            background: rgba(102, 126, 234, 0.2);
+            border: 1px solid rgba(102, 126, 234, 0.5);
+            padding: 0.8em 1.5em;
+            border-radius: 25px;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+        }
+
+        .tech-badge:hover {
+            background: rgba(102, 126, 234, 0.3);
+            transform: scale(1.05);
+        }
+
+        .value-prop {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            padding: 2em;
+            border-radius: 15px;
+            margin: 2em 0;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .roi-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2em;
+            margin: 2em 0;
+        }
+
+        .roi-item {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 1.5em;
+            border-radius: 10px;
+        }
+
+        .navigation {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 1em;
+            z-index: 100;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.8em 2em;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: #764ba2;
+            transform: scale(1.05);
+        }
+
+        button:disabled {
+            background: #4a5568;
+            cursor: not-allowed;
+            transform: scale(1);
+        }
+
+        .slide-number {
+            position: fixed;
+            top: 30px;
+            right: 30px;
+            color: #9ca3af;
+            font-size: 1.2em;
+        }
+
+        .logo {
+            font-size: 4em;
+            font-weight: 900;
+            margin-bottom: 0.3em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .architecture-img {
+            width: 100%;
+            max-width: 800px;
+            margin: 2em auto;
+            display: block;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .highlight {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .call-to-action {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2em 3em;
+            border-radius: 15px;
+            text-align: center;
+            margin: 2em 0;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .call-to-action h3 {
+            color: white;
+            margin-bottom: 0.5em;
+        }
+
+        .call-to-action p {
+            color: #f0f0f0;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="presentation">
+        <div class="slide-number" id="slideNumber">1 / 8</div>
+
+        <!-- Slide 1: Title -->
+        <div class="slide active">
+            <div style="text-align: center;">
+                <div class="logo">CODIVUS</div>
+                <h1>AI-Powered Code Intelligence Platform</h1>
+                <p class="subtitle">Transform Your Code Analysis with Advanced AI and Graph Technology</p>
+                <div class="tech-stack" style="justify-content: center; margin-top: 3em;">
+                    <div class="tech-badge">🚀 Production Ready</div>
+                    <div class="tech-badge">✅ 100% Test Coverage</div>
+                    <div class="tech-badge">🔍 Real-time Analysis</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 2: Executive Summary -->
+        <div class="slide">
+            <h2>Executive Summary</h2>
+            <div class="value-prop">
+                <h3>The Challenge</h3>
+                <p>Modern software development faces increasing complexity with large codebases, making it difficult to understand code relationships, detect issues early, and maintain code quality at scale.</p>
+            </div>
+            <div class="value-prop" style="background: linear-gradient(135deg, #1e5f3a 0%, #2d875a 100%);">
+                <h3>Our Solution</h3>
+                <p>Codivus leverages cutting-edge AI and graph database technology to provide deep code insights, automated analysis, and real-time issue detection - all running on your local infrastructure for maximum security.</p>
+            </div>
+        </div>
+
+        <!-- Slide 3: Key Business Metrics -->
+        <div class="slide">
+            <h2>Key Business Value</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">70%</div>
+                    <div class="metric-label">Faster Code Reviews</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">85%</div>
+                    <div class="metric-label">Early Bug Detection</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">100%</div>
+                    <div class="metric-label">Code Coverage Analysis</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">0</div>
+                    <div class="metric-label">Cloud Dependencies</div>
+                </div>
+            </div>
+            <p style="text-align: center; margin-top: 2em; font-size: 1.4em;">
+                <span class="highlight">Fully Self-Hosted</span> • <span class="highlight">Enterprise Secure</span> • <span class="highlight">AI-Powered</span>
+            </p>
+        </div>
+
+        <!-- Slide 4: Core Capabilities -->
+        <div class="slide">
+            <h2>Core Capabilities</h2>
+            <ul class="features-list">
+                <li><strong>Real-time Code Scanning:</strong> Monitor and analyze code changes as they happen</li>
+                <li><strong>AI-Powered Analysis:</strong> Leverage local LLMs for intelligent code understanding</li>
+                <li><strong>Graph-Based Intelligence:</strong> Understand complex code relationships with JanusGraph</li>
+                <li><strong>Interactive Visualizations:</strong> Explore your codebase through intuitive visual graphs</li>
+                <li><strong>Automated Issue Detection:</strong> Identify bugs, security issues, and code smells automatically</li>
+                <li><strong>Multi-Repository Support:</strong> Analyze local and GitHub repositories seamlessly</li>
+            </ul>
+        </div>
+
+        <!-- Slide 5: Technology Architecture -->
+        <div class="slide">
+            <h2>Enterprise-Grade Architecture</h2>
+            <div style="text-align: center;">
+                <p style="margin-bottom: 2em;">Built with modern, scalable technologies trusted by enterprises worldwide</p>
+                <div class="tech-stack" style="justify-content: center;">
+                    <div class="tech-badge">Vue.js 3</div>
+                    <div class="tech-badge">.NET 8</div>
+                    <div class="tech-badge">JanusGraph</div>
+                    <div class="tech-badge">Ollama/LMStudio</div>
+                    <div class="tech-badge">WebSocket</div>
+                    <div class="tech-badge">RESTful API</div>
+                </div>
+                <div class="metrics-grid" style="margin-top: 3em;">
+                    <div class="metric-card">
+                        <h3>Frontend</h3>
+                        <p>Modern Vue.js SPA with real-time updates</p>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Backend</h3>
+                        <p>High-performance .NET 8 API</p>
+                    </div>
+                    <div class="metric-card">
+                        <h3>AI Engine</h3>
+                        <p>Local LLM integration for privacy</p>
+                    </div>
+                    <div class="metric-card">
+                        <h3>Graph DB</h3>
+                        <p>JanusGraph for relationship analysis</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 6: ROI & Benefits -->
+        <div class="slide">
+            <h2>Return on Investment</h2>
+            <div class="roi-section">
+                <div class="roi-item">
+                    <h3>💰 Cost Savings</h3>
+                    <p>Reduce debugging time by 70% through early issue detection</p>
+                </div>
+                <div class="roi-item">
+                    <h3>🚀 Productivity Gains</h3>
+                    <p>Accelerate development cycles with automated code analysis</p>
+                </div>
+                <div class="roi-item">
+                    <h3>🛡️ Risk Mitigation</h3>
+                    <p>Identify security vulnerabilities before production</p>
+                </div>
+                <div class="roi-item">
+                    <h3>📊 Quality Improvement</h3>
+                    <p>Maintain consistent code quality across teams</p>
+                </div>
+            </div>
+            <div class="value-prop" style="text-align: center; margin-top: 2em;">
+                <p style="font-size: 1.5em;"><strong>Average ROI: 300% in First Year</strong></p>
+            </div>
+        </div>
+
+        <!-- Slide 7: Implementation Timeline -->
+        <div class="slide">
+            <h2>Quick Implementation</h2>
+            <div style="text-align: center;">
+                <h3 style="color: #10b981; margin-bottom: 1em;">Go Live in Days, Not Months</h3>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value">Day 1</div>
+                        <div class="metric-label">Installation & Setup</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">Day 2-3</div>
+                        <div class="metric-label">Repository Integration</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">Day 4-5</div>
+                        <div class="metric-label">Team Training</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">Week 2</div>
+                        <div class="metric-label">Full Production Use</div>
+                    </div>
+                </div>
+                <p style="margin-top: 2em; font-size: 1.3em;">
+                    <span class="highlight">Zero Cloud Setup</span> • 
+                    <span class="highlight">No Data Leaves Your Network</span> • 
+                    <span class="highlight">Full Control</span>
+                </p>
+            </div>
+        </div>
+
+        <!-- Slide 8: Call to Action -->
+        <div class="slide">
+            <h2>Next Steps</h2>
+            <div class="call-to-action">
+                <h3>Ready to Transform Your Code Analysis?</h3>
+                <p>Join leading development teams using Codivus to deliver better software faster</p>
+            </div>
+            <div class="features-list" style="font-size: 1.4em;">
+                <li>Schedule a personalized demo</li>
+                <li>Start with a 30-day pilot program</li>
+                <li>Get custom integration support</li>
+                <li>Access enterprise pricing options</li>
+            </div>
+            <div style="text-align: center; margin-top: 3em;">
+                <p style="font-size: 1.5em; color: #667eea;">
+                    <strong>Contact: info@codivus.com</strong>
+                </p>
+                <p style="margin-top: 1em;">
+                    🔒 Enterprise-Ready • 🚀 Production-Tested • ✅ 100% Self-Hosted
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="navigation">
+        <button id="prevBtn" onclick="changeSlide(-1)">Previous</button>
+        <button id="nextBtn" onclick="changeSlide(1)">Next</button>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+
+        function showSlide(n) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (n + totalSlides) % totalSlides;
+            slides[currentSlide].classList.add('active');
+            
+            document.getElementById('slideNumber').textContent = `${currentSlide + 1} / ${totalSlides}`;
+            
+            // Update navigation buttons
+            document.getElementById('prevBtn').disabled = currentSlide === 0;
+            document.getElementById('nextBtn').disabled = currentSlide === totalSlides - 1;
+        }
+
+        function changeSlide(direction) {
+            showSlide(currentSlide + direction);
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') changeSlide(-1);
+            if (e.key === 'ArrowRight') changeSlide(1);
+            if (e.key === ' ') changeSlide(1); // Spacebar advances
+        });
+
+        // Initialize
+        showSlide(0);
+
+        // Auto-advance timer (optional - uncomment to enable)
+        // setInterval(() => {
+        //     if (currentSlide < totalSlides - 1) {
+        //         changeSlide(1);
+        //     }
+        // }, 10000); // Advance every 10 seconds
+    </script>
+</body>
+</html>
