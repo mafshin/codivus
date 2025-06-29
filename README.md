@@ -2,7 +2,8 @@
 
 <img src="src/docs/header.png" alt="placeholder"  height="300">
 
-A modern, AI-powered code scanning solution designed to analyze code repositories for potential issues, vulnerabilities, and improvement opportunities.
+A modern, AI-powered code scanning solution designed to analyze code repositories for potential issues, vulnerabilities, and improvement opportunities. 
+The name Codivus is made from “Code” + Latin vivus (alive), breathing insight into your code.
 
 ## 🚀 Features
 
