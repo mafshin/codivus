@@ -222,6 +222,20 @@
                   >
                     <span class="mdi mdi-stop"></span> Cancel
                   </button>
+                  <!-- DELETE BUTTON - NEW -->
+                  <button 
+                    v-if="canDeleteScan(scan)"
+                    class="btn btn-sm btn-danger" 
+                    @click.stop="deleteScanWithConfirmation(scan)"
+                    :disabled="deletingScans.has(scan.id)"
+                    :title="`Delete scan ${scan.id}`"
+                  >
+                    <span 
+                      class="mdi" 
+                      :class="deletingScans.has(scan.id) ? 'mdi-loading mdi-spin' : 'mdi-delete'"
+                    ></span> 
+                    {{ deletingScans.has(scan.id) ? 'Deleting...' : 'Delete' }}
+                  </button>
                   <button 
                     class="btn btn-sm btn-secondary"
                     @click.stop="navigateToScan(scan.id)"
@@ -337,6 +351,7 @@ const showScanConfigModal = ref(false)
 const scanning = ref(false)
 const structureError = ref(null)
 const refreshInterval = ref(null)
+const deletingScans = ref(new Set()) // NEW: Track delete operations
 
 // Computed properties
 const repository = computed(() => repositoryStore.currentRepository)
@@ -531,6 +546,88 @@ const cancelScan = async (scanId) => {
     await fetchScans() // Refresh scans after action
   } catch (error) {
     console.error('Error canceling scan:', error)
+  }
+}
+
+// NEW: Delete scan functionality
+const canDeleteScan = (scan) => {
+  if (!scan || !scan.status) return false
+  
+  // Convert numeric status to string if needed
+  const statusString = typeof scan.status === 'number' ? mapScanStatus(scan.status) : scan.status
+  
+  const deletableStatuses = ['Completed', 'Failed', 'Canceled', 'Paused']
+  const isStatusDeletable = deletableStatuses.includes(statusString)
+  const isNotCurrentlyDeleting = !deletingScans.value.has(scan.id)
+  
+  return isStatusDeletable && isNotCurrentlyDeleting
+}
+
+const mapScanStatus = (numericStatus) => {
+  const statusMap = {
+    0: 'Pending',
+    1: 'Initializing', 
+    2: 'InProgress',
+    3: 'Paused',
+    4: 'Canceled',
+    5: 'Completed',
+    6: 'Failed'
+  }
+  return statusMap[numericStatus] || numericStatus
+}
+
+const deleteScanWithConfirmation = async (scan) => {
+  const statusString = typeof scan.status === 'number' ? mapScanStatus(scan.status) : scan.status
+  
+  const confirmMessage = `Are you sure you want to delete this scan?\n\n` +
+    `Scan: #${scan.id.substr(0, 8)}\n` +
+    `Status: ${statusString}\n` +
+    `Issues Found: ${scan.issuesFound || 0}\n` +
+    `Started: ${formatDate(scan.startedAt)}\n\n` +
+    `This will also delete all related issues and cannot be undone.`
+  
+  if (!confirm(confirmMessage)) {
+    return
+  }
+  
+  await deleteScan(scan.id)
+}
+
+const deleteScan = async (scanId) => {
+  // Add to deleting set to show loading state
+  deletingScans.value.add(scanId)
+  
+  try {
+    console.log(`Starting delete process for scan ${scanId}`)
+    
+    // Call the store delete method
+    await scanningStore.deleteScan(scanId)
+    
+    console.log(`Successfully deleted scan ${scanId}`)
+    
+    // Refresh the scans list
+    await fetchScans()
+    
+  } catch (error) {
+    console.error('Error deleting scan:', error)
+    
+    // Show user-friendly error message
+    let errorMessage = 'Failed to delete scan'
+    if (error.response?.status === 404) {
+      errorMessage = 'Scan not found. It may have already been deleted.'
+    } else if (error.response?.status === 400) {
+      errorMessage = `Cannot delete scan: ${error.response.data || error.message}`
+    } else if (error.response?.status >= 500) {
+      errorMessage = 'Server error occurred while deleting scan. Please try again.'
+    } else {
+      errorMessage = `Failed to delete scan: ${error.message}`
+    }
+    
+    alert(errorMessage)
+    
+  } finally {
+    // Remove from deleting set
+    deletingScans.value.delete(scanId)
   }
 }
 

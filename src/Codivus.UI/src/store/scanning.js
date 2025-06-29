@@ -255,41 +255,83 @@ export const useScanningStore = defineStore({
     
     // Delete a scan and all its related issues
     async deleteScan(scanId) {
+      console.log('=== STORE DELETE SCAN START ===')
+      console.log('Store: Starting delete of scan', scanId)
+      console.log('Store: scanId type:', typeof scanId)
+      console.log('Store: Current scans in store:', Object.keys(this.scans).length)
+      console.log('Store: Scan exists in store:', !!this.scans[scanId])
+      
+      if (this.scans[scanId]) {
+        console.log('Store: Scan details:', {
+          id: this.scans[scanId].id,
+          status: this.scans[scanId].status,
+          repositoryId: this.scans[scanId].repositoryId
+        })
+      }
+      
       this.error = null
       
       try {
-        console.log('Store: Starting delete of scan', scanId)
-        
         // Stop polling for this scan
+        console.log('Store: Stopping polling for scan', scanId)
         this.stopPolling(scanId)
         
         // Delete the scan via API
         console.log('Store: Calling API deleteScan')
-        await api.deleteScan(scanId)
-        console.log('Store: API deleteScan succeeded')
+        const apiResponse = await api.deleteScan(scanId)
+        console.log('Store: API deleteScan succeeded with response:', {
+          status: apiResponse?.status,
+          statusText: apiResponse?.statusText
+        })
         
         // Remove scan from local store
+        console.log('Store: Removing scan from local store')
+        const scanExisted = !!this.scans[scanId]
         delete this.scans[scanId]
+        console.log('Store: Scan removed from store. Existed before:', scanExisted)
         
         // Remove issues associated with this scan
+        console.log('Store: Removing issues for scan', scanId)
+        const issuesExisted = !!this.scanIssues[scanId]
         delete this.scanIssues[scanId]
+        console.log('Store: Issues removed. Existed before:', issuesExisted)
         
         // Clear current scan if it was the deleted one
         if (this.currentScan && this.currentScan.id === scanId) {
+          console.log('Store: Clearing current scan as it was the deleted one')
           this.currentScan = null
         }
         
+        console.log('Store: Final scan count in store:', Object.keys(this.scans).length)
         console.log('Store: Delete scan completed successfully')
+        console.log('=== STORE DELETE SCAN SUCCESS ===')
         return true
       } catch (error) {
+        console.log('=== STORE DELETE SCAN ERROR ===')
         console.error('Store: Error deleting scan:', {
           scanId,
           error: error.message,
+          errorType: error.constructor.name,
           status: error.response?.status,
           statusText: error.response?.statusText,
-          data: error.response?.data
+          data: error.response?.data,
+          stack: error.stack
         })
-        this.error = error.message || `Failed to delete scan ${scanId}`
+        
+        // Set detailed error message
+        let errorMessage = `Failed to delete scan ${scanId}`
+        if (error.response?.status === 404) {
+          errorMessage = `Scan ${scanId} not found on server`
+        } else if (error.response?.status === 400) {
+          errorMessage = `Cannot delete scan ${scanId}: ${error.response?.data || error.message}`
+        } else if (error.response?.status >= 500) {
+          errorMessage = `Server error while deleting scan ${scanId}`
+        } else if (!error.response) {
+          errorMessage = `Network error while deleting scan ${scanId}`
+        }
+        
+        this.error = errorMessage
+        console.log('=== STORE DELETE SCAN ERROR END ===')
         throw error
       }
     },

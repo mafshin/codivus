@@ -160,37 +160,85 @@ export default {
   },
   
   deleteScan(scanId) {
+    console.log('=== DELETE SCAN API CALL START ===')
     console.log('API: Calling deleteScan with scanId:', scanId)
+    console.log('API: scanId type:', typeof scanId)
+    console.log('API: scanId length:', scanId?.length)
     console.log('API: URL will be:', `/scanning/${scanId}`)
+    console.log('API: Full URL will be:', `${apiClient.defaults.baseURL}/scanning/${scanId}`)
+    console.log('API: Base URL:', apiClient.defaults.baseURL)
+    console.log('API: Timeout:', apiClient.defaults.timeout)
+    console.log('API: Headers:', apiClient.defaults.headers)
     
-    // Try the main delete endpoint
+    // Validate scanId before making the request
+    if (!scanId) {
+      const error = new Error('scanId is required for delete operation')
+      console.error('API: Delete scan validation error:', error.message)
+      return Promise.reject(error)
+    }
+    
+    if (typeof scanId !== 'string' || scanId.length < 10) {
+      const error = new Error(`Invalid scanId format: ${scanId}`)
+      console.error('API: Delete scan validation error:', error.message)
+      return Promise.reject(error)
+    }
+    
+    // Make the delete request with comprehensive logging
+    const startTime = Date.now()
+    console.log('API: Starting DELETE request at:', new Date().toISOString())
+    
     return apiClient.delete(`/scanning/${scanId}`)
       .then(response => {
-        console.log('API: Delete scan response:', {
+        const duration = Date.now() - startTime
+        console.log('=== DELETE SCAN API CALL SUCCESS ===')
+        console.log('API: Delete scan SUCCESS response:', {
           status: response.status,
-          statusText: response.statusText
+          statusText: response.statusText,
+          duration: `${duration}ms`,
+          headers: response.headers,
+          data: response.data
         })
+        console.log('API: Response received at:', new Date().toISOString())
+        console.log('=== DELETE SCAN API CALL END ===')
         return response
       })
       .catch(error => {
-        console.error('API: Delete scan error (first attempt):', {
+        const duration = Date.now() - startTime
+        console.log('=== DELETE SCAN API CALL ERROR ===')
+        console.error('API: Delete scan ERROR response:', {
           message: error.message,
           status: error.response?.status,
           statusText: error.response?.statusText,
+          duration: `${duration}ms`,
           url: error.config?.url,
           method: error.config?.method,
-          data: error.response?.data
+          requestData: error.config?.data,
+          responseData: error.response?.data,
+          requestHeaders: error.config?.headers,
+          responseHeaders: error.response?.headers
         })
         
-        // If we get a 404, it might be that the endpoint is wrong
-        // Let's log all the information we can
+        // Detailed error analysis
         if (error.response?.status === 404) {
-          console.log('API: 404 error - endpoint might not exist')
-          console.log('API: Full error details:', error.response)
-          console.log('API: Base URL:', apiClient.defaults.baseURL)
-          console.log('API: Full URL attempted:', error.config?.url)
+          console.error('API: 404 NOT FOUND - The scan might not exist or endpoint is wrong')
+          console.error('API: Attempted URL:', error.config?.url)
+          console.error('API: Base URL:', apiClient.defaults.baseURL)
+          console.error('API: Full URL attempted:', error.config?.url)
+          console.error('API: Backend might not be running or endpoint not implemented')
+        } else if (error.response?.status === 400) {
+          console.error('API: 400 BAD REQUEST - Invalid request or scan cannot be deleted')
+          console.error('API: Server response:', error.response?.data)
+        } else if (error.response?.status >= 500) {
+          console.error('API: 5xx SERVER ERROR - Backend server error')
+          console.error('API: Server response:', error.response?.data)
+        } else if (!error.response) {
+          console.error('API: NETWORK ERROR - No response received')
+          console.error('API: This might be a CORS issue or server is down')
+          console.error('API: Error code:', error.code)
         }
         
+        console.log('API: Error occurred at:', new Date().toISOString())
+        console.log('=== DELETE SCAN API CALL END ===')
         throw error
       })
   },

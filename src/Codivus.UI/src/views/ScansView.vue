@@ -11,6 +11,42 @@
           <span class="mdi" :class="refreshing ? 'mdi-loading mdi-spin' : 'mdi-refresh'"></span>
           Refresh
         </button>
+        <!-- Debug Toggle Button -->
+        <button 
+          class="btn btn-outline-secondary"
+          @click="showDebugInfo = !showDebugInfo"
+        >
+          <span class="mdi mdi-bug"></span>
+          {{ showDebugInfo ? 'Hide' : 'Show' }} Debug
+        </button>
+      </div>
+    </div>
+
+    <!-- Debug Information Panel -->
+    <div v-if="showDebugInfo" class="debug-panel">
+      <h3>Debug Information</h3>
+      <div class="debug-stats">
+        <div><strong>Total Scans:</strong> {{ allScans.length }}</div>
+        <div><strong>Filtered Scans:</strong> {{ filteredScans.length }}</div>
+        <div><strong>Deletable Scans:</strong> {{ deletableScansCount }}</div>
+        <div><strong>Active Deletions:</strong> {{ deletingScans.size }}</div>
+      </div>
+      <div class="debug-actions">
+        <button class="btn btn-sm btn-warning" @click="forceClearDeleteState">
+          Clear Delete State
+        </button>
+        <button class="btn btn-sm btn-info" @click="logScanStates">
+          Log Scan States
+        </button>
+      </div>
+      <div class="debug-scan-list">
+        <h4>Scan Details:</h4>
+        <div v-for="scan in allScans" :key="scan.id" class="debug-scan-item">
+          <strong>{{ getRepositoryName(scan.repositoryId) }}</strong> - 
+          Status: <code>{{ scan.status }}</code> ({{ mapScanStatus(scan.status) }}) - 
+          Can Delete: <span :class="canDeleteScan(scan) ? 'text-success' : 'text-danger'">{{ canDeleteScan(scan) }}</span> - 
+          Reason: <small>{{ canDeleteScan(scan) ? 'OK' : getDeleteDisabledReason(scan) }}</small>
+        </div>
       </div>
     </div>
     
@@ -71,6 +107,15 @@
       <span>Loading scans...</span>
     </div>
     
+    <!-- Error Display -->
+    <div v-if="deleteError" class="alert alert-danger">
+      <span class="mdi mdi-alert-circle"></span>
+      <strong>Delete Error:</strong> {{ deleteError }}
+      <button class="btn btn-sm btn-outline-danger" @click="deleteError = ''">
+        <span class="mdi mdi-close"></span>
+      </button>
+    </div>
+    
     <div v-else-if="filteredScans.length === 0" class="empty-state">
       <div v-if="searchQuery || repositoryFilter !== 'all' || statusFilter !== 'all'" class="no-results">
         <span class="mdi mdi-file-search-outline"></span>
@@ -95,7 +140,7 @@
         class="scan-card"
         @click="navigateToScan(scan.id)"
       >
-        <div class="scan-status" :class="'status-' + (scan.status ? String(scan.status).toLowerCase() : 'unknown')">
+        <div class="scan-status" :class="'status-' + (mapScanStatus(scan.status) ? String(mapScanStatus(scan.status)).toLowerCase() : 'unknown')">
           <span class="mdi" :class="getStatusIcon(scan.status)"></span>
         </div>
         <div class="scan-content">
@@ -113,38 +158,44 @@
             <span class="scan-issues">{{ scan.issuesFound || 0 }} issues</span>
             <span 
               class="scan-status-text"
-              :class="'status-' + (scan.status ? String(scan.status).toLowerCase() : 'unknown')"
+              :class="'status-' + (mapScanStatus(scan.status) ? String(mapScanStatus(scan.status)).toLowerCase() : 'unknown')"
             >
-              {{ scan.status || 'Unknown' }}
+              {{ mapScanStatus(scan.status) || 'Unknown' }}
+            </span>
+            <!-- Debug Info for each scan -->
+            <span v-if="showDebugInfo" class="debug-info">
+              ID: {{ scan.id.substring(0, 8) }}... | Can Delete: {{ canDeleteScan(scan) }}
             </span>
           </div>
           <div class="scan-actions">
             <button 
-              v-if="scan.status === 'InProgress'"
+              v-if="mapScanStatus(scan.status) === 'InProgress'"
               class="btn btn-sm btn-warning" 
               @click.stop="pauseScan(scan.id)"
             >
               <span class="mdi mdi-pause"></span> Pause
             </button>
             <button 
-              v-if="scan.status === 'Paused'"
+              v-if="mapScanStatus(scan.status) === 'Paused'"
               class="btn btn-sm btn-primary" 
               @click.stop="resumeScan(scan.id)"
             >
               <span class="mdi mdi-play"></span> Resume
             </button>
             <button 
-              v-if="scan.status === 'InProgress' || scan.status === 'Paused'"
+              v-if="mapScanStatus(scan.status) === 'InProgress' || mapScanStatus(scan.status) === 'Paused'"
               class="btn btn-sm btn-danger" 
               @click.stop="cancelScan(scan.id)"
             >
               <span class="mdi mdi-stop"></span> Cancel
             </button>
+            <!-- Enhanced Delete Button with better conditions -->
             <button 
-              v-if="scan.status === 'Completed' || scan.status === 'Failed' || scan.status === 'Canceled'"
+              v-if="canDeleteScan(scan)"
               class="btn btn-sm btn-danger" 
-              @click.stop="deleteScan(scan.id)"
+              @click.stop="deleteScanWithConfirmation(scan)"
               :disabled="deletingScans.has(scan.id)"
+              :title="`Delete scan ${scan.id}`"
             >
               <span 
                 class="mdi" 
@@ -152,6 +203,21 @@
               ></span> 
               {{ deletingScans.has(scan.id) ? 'Deleting...' : 'Delete' }}
             </button>
+            
+            <!-- Temporary Debug/Fallback Delete Button -->
+            <button 
+              v-if="!canDeleteScan(scan) && showDebugInfo"
+              class="btn btn-sm btn-outline-danger" 
+              @click.stop="deleteScanWithConfirmation(scan)"
+              :title="`Force delete scan ${scan.id} - Status: ${mapScanStatus(scan.status)}`"
+            >
+              <span class="mdi mdi-delete"></span> Force Delete (Debug)
+            </button>
+            
+            <!-- Debug: Show why delete button is hidden -->
+            <span v-else-if="showDebugInfo" class="debug-delete-reason">
+              {{ getDeleteDisabledReason(scan) }}
+            </span>
             <button 
               class="btn btn-sm btn-secondary"
               @click.stop="navigateToScan(scan.id)"
@@ -183,9 +249,25 @@ const repositoryFilter = ref('all')
 const statusFilter = ref('all')
 const sortOption = ref('date-desc')
 const deletingScans = ref(new Set())
+const deleteError = ref('')
+const showDebugInfo = ref(false)
 
 // Computed properties
 const repositories = computed(() => repositoryStore.repositories)
+
+// Status mapping function to convert numeric status to string
+const mapScanStatus = (numericStatus) => {
+  const statusMap = {
+    0: 'Pending',
+    1: 'Initializing', 
+    2: 'InProgress',
+    3: 'Paused',
+    4: 'Canceled',
+    5: 'Completed',
+    6: 'Failed'
+  }
+  return statusMap[numericStatus] || numericStatus
+}
 
 const allScans = computed(() => {
   const scans = Object.values(scanningStore.scans || {})
@@ -200,6 +282,10 @@ const allScans = computed(() => {
     })
   }
   return scans
+})
+
+const deletableScansCount = computed(() => {
+  return allScans.value.filter(scan => canDeleteScan(scan)).length
 })
 
 const filteredScans = computed(() => {
@@ -225,7 +311,10 @@ const filteredScans = computed(() => {
   
   // Apply status filter
   if (statusFilter.value !== 'all') {
-    result = result.filter(scan => scan.status === statusFilter.value)
+    result = result.filter(scan => {
+      const stringStatus = mapScanStatus(scan.status)
+      return stringStatus === statusFilter.value
+    })
   }
   
   // Apply sorting
@@ -288,6 +377,32 @@ async function refreshAllData() {
   }
 }
 
+// Debug functions
+const forceClearDeleteState = () => {
+  deletingScans.value.clear()
+  deleteError.value = ''
+  console.log('Cleared delete state')
+}
+
+const logScanStates = () => {
+  console.log('=== SCAN STATES DEBUG ===')
+  console.log('Total scans:', allScans.value.length)
+  
+  allScans.value.forEach(scan => {
+    const stringStatus = mapScanStatus(scan.status)
+    console.log(`Scan ${scan.id.substring(0, 8)}:`, {
+      numericStatus: scan.status,
+      stringStatus: stringStatus,
+      canDelete: canDeleteScan(scan),
+      reason: canDeleteScan(scan) ? 'OK' : getDeleteDisabledReason(scan),
+      isDeleting: deletingScans.value.has(scan.id)
+    })
+  })
+  
+  console.log('Deletable scans:', deletableScansCount.value)
+  console.log('Currently deleting:', Array.from(deletingScans.value))
+}
+
 const clearFilters = () => {
   searchQuery.value = ''
   repositoryFilter.value = 'all'
@@ -300,8 +415,10 @@ const getRepositoryName = (repositoryId) => {
 }
 
 const calculateProgress = (scan) => {
-  if (scan.status === 'Completed') return 100
-  if (scan.status === 'Failed' || scan.status === 'Canceled') return 0
+  const stringStatus = mapScanStatus(scan.status)
+  
+  if (stringStatus === 'Completed') return 100
+  if (stringStatus === 'Failed' || stringStatus === 'Canceled') return 0
   
   if (scan.totalFiles > 0) {
     return Math.round((scan.scannedFiles / scan.totalFiles) * 100)
@@ -311,15 +428,16 @@ const calculateProgress = (scan) => {
 }
 
 const getStatusIcon = (status) => {
-  if (!status) return 'mdi-help-circle'
+  const stringStatus = mapScanStatus(status)
   
-  switch (status) {
+  switch (stringStatus) {
     case 'InProgress': return 'mdi-progress-clock'
     case 'Initializing': return 'mdi-timer-sand'
     case 'Completed': return 'mdi-check-circle'
     case 'Failed': return 'mdi-alert-circle'
     case 'Paused': return 'mdi-pause-circle'
     case 'Canceled': return 'mdi-stop-circle'
+    case 'Pending': return 'mdi-clock-outline'
     default: return 'mdi-help-circle'
   }
 }
@@ -361,22 +479,82 @@ const cancelScan = async (scanId) => {
   }
 }
 
-const deleteScan = async (scanId) => {
-  // Confirmation dialog
-  if (!confirm('Are you sure you want to delete this scan? This will also delete all related issues and cannot be undone.')) {
+// Enhanced delete functionality
+function canDeleteScan(scan) {
+  if (!scan || scan.status === null || scan.status === undefined) return false
+  
+  // Map numeric status to string
+  const stringStatus = mapScanStatus(scan.status)
+  
+  const deletableStatuses = ['Completed', 'Failed', 'Canceled', 'Paused']
+  const isStatusDeletable = deletableStatuses.includes(stringStatus)
+  const isNotCurrentlyDeleting = !deletingScans.value.has(scan.id)
+  
+  return isStatusDeletable && isNotCurrentlyDeleting
+}
+
+function getDeleteDisabledReason(scan) {
+  if (!scan) return 'No scan data'
+  if (scan.status === null || scan.status === undefined) return 'Unknown status'
+  if (deletingScans.value.has(scan.id)) return 'Currently deleting'
+  
+  // Map numeric status to string
+  const stringStatus = mapScanStatus(scan.status)
+  
+  const deletableStatuses = ['Completed', 'Failed', 'Canceled', 'Paused']
+  if (!deletableStatuses.includes(stringStatus)) {
+    return `Status '${stringStatus}' (${scan.status}) not deletable`
+  }
+  
+  return 'Should be deletable'
+}
+
+async function deleteScanWithConfirmation(scan) {
+  const stringStatus = mapScanStatus(scan.status)
+  
+  const confirmMessage = `Are you sure you want to delete this scan?\n\n` +
+    `Repository: ${getRepositoryName(scan.repositoryId)}\n` +
+    `Status: ${stringStatus}\n` +
+    `Issues Found: ${scan.issuesFound || 0}\n` +
+    `Started: ${formatDate(scan.startedAt)}\n\n` +
+    `This will also delete all related issues and cannot be undone.`
+  
+  if (!confirm(confirmMessage)) {
     return
   }
+  
+  await deleteScan(scan.id)
+}
+
+const deleteScan = async (scanId) => {
+  // Clear any previous error
+  deleteError.value = ''
   
   // Add to deleting set to show loading state
   deletingScans.value.add(scanId)
   
   try {
+    console.log(`Starting delete process for scan ${scanId}`)
+    
+    // Call the store delete method
     await scanningStore.deleteScan(scanId)
+    
     console.log(`Successfully deleted scan ${scanId}`)
+    
   } catch (error) {
     console.error('Error deleting scan:', error)
-    // Show error message to user
-    alert(`Failed to delete scan: ${error.message}`)
+    
+    // Set user-friendly error message
+    if (error.response?.status === 404) {
+      deleteError.value = `Scan not found. It may have already been deleted.`
+    } else if (error.response?.status === 400) {
+      deleteError.value = `Cannot delete scan: ${error.response.data || error.message}`
+    } else if (error.response?.status >= 500) {
+      deleteError.value = `Server error occurred while deleting scan. Please try again.`
+    } else {
+      deleteError.value = `Failed to delete scan: ${error.message}`
+    }
+    
   } finally {
     // Remove from deleting set
     deletingScans.value.delete(scanId)
@@ -412,6 +590,70 @@ onMounted(async () => {
     .page-actions {
       display: flex;
       gap: 0.75rem;
+    }
+  }
+  
+  .debug-panel {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: var(--border-radius);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    
+    h3 {
+      margin-bottom: 0.75rem;
+      color: #495057;
+    }
+    
+    .debug-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      
+      div {
+        font-size: 0.875rem;
+      }
+    }
+    
+    .debug-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .debug-scan-list {
+      h4 {
+        margin-bottom: 0.5rem;
+        color: #495057;
+      }
+      
+      .debug-scan-item {
+        padding: 0.25rem 0;
+        font-size: 0.875rem;
+        border-bottom: 1px solid #e9ecef;
+        
+        &:last-child {
+          border-bottom: none;
+        }
+        
+        code {
+          background: #e9ecef;
+          padding: 0.125rem 0.25rem;
+          border-radius: 3px;
+          font-size: 0.75rem;
+        }
+        
+        .text-success {
+          color: #28a745;
+          font-weight: bold;
+        }
+        
+        .text-danger {
+          color: #dc3545;
+          font-weight: bold;
+        }
+      }
     }
   }
   
@@ -674,11 +916,27 @@ onMounted(async () => {
               color: var(--secondary-color);
             }
           }
+          
+          .debug-info {
+            font-size: 0.75rem;
+            color: #6c757d;
+            font-family: monospace;
+            display: block;
+            margin-top: 0.25rem;
+          }
         }
         
         .scan-actions {
           display: flex;
           gap: 0.5rem;
+          flex-wrap: wrap;
+          
+          .debug-delete-reason {
+            font-size: 0.75rem;
+            color: #dc3545;
+            font-style: italic;
+            align-self: center;
+          }
         }
       }
     }
@@ -688,6 +946,47 @@ onMounted(async () => {
 .btn-sm {
   padding: 0.375rem 0.75rem;
   font-size: 0.875rem;
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: var(--border-radius);
+  
+  &.alert-danger {
+    background-color: #f8d7da;
+    border: 1px solid #f1aeb5;
+    color: #721c24;
+  }
+  
+  button {
+    margin-left: auto;
+  }
+}
+
+.btn-outline-danger {
+  border: 1px solid #dc3545;
+  color: #dc3545;
+  background: transparent;
+  
+  &:hover {
+    background: #dc3545;
+    color: white;
+  }
+}
+
+.btn-outline-secondary {
+  border: 1px solid var(--secondary-color);
+  color: var(--secondary-color);
+  background: transparent;
+  
+  &:hover {
+    background: var(--secondary-color);
+    color: white;
+  }
 }
 
 @keyframes spin {
