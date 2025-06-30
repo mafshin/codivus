@@ -81,6 +81,7 @@ namespace Codivus.Core.Models
         public bool ContinueOnError { get; set; } = true;
         public List<string> IncludePatterns { get; set; } = new();
         public List<string> ExcludePatterns { get; set; } = new();
+        public List<string> SupportedExtensions { get; set; } = new() { ".cs", ".vb" };
     }
 
     public class GraphScanCheckpoint

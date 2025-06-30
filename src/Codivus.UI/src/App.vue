@@ -9,6 +9,7 @@
         <router-link to="/" class="nav-link">Dashboard</router-link>
         <router-link to="/repositories" class="nav-link">Repositories</router-link>
         <router-link to="/scans" class="nav-link">Scans</router-link>
+        <router-link to="/graph" class="nav-link">Graph</router-link>
         <router-link to="/settings" class="nav-link">Settings</router-link>
       </nav>
     </header>

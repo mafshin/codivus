@@ -34,6 +34,11 @@ const routes = [
     props: true
   },
   {
+    path: '/graph',
+    name: 'Graph',
+    component: () => import('@/views/GraphView.vue')
+  },
+  {
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/SettingsView.vue')

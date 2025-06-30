@@ -299,8 +299,8 @@ namespace Codivus.API.Services
             {
                 RepositoryId = repository.Id.ToString(),
                 ScanId = scanId,
-                Scope = ScanScope.Directory,
-                TargetPath = Path.GetDirectoryName(files.First().Path) ?? "",
+                Scope = ScanScope.Repository,
+                TargetPath = "",
                 FileIds = files.Select(f => f.Id.ToString()).ToList(),
                 Options = new GraphScanOptions
                 {
@@ -310,7 +310,10 @@ namespace Codivus.API.Services
                     MaxFileSizeBytes = configuration.Analysis.MaxFileSizeMB * 1024 * 1024,
                     BuildRelationships = configuration.Relationships.TrackCalls,
                     CalculateMetrics = configuration.Metrics.CalculateComplexity,
-                    BatchSize = configuration.Processing.BatchSize
+                    BatchSize = configuration.Processing.BatchSize,
+                    ContinueOnError = configuration.Processing.ContinueOnError,
+                    SupportedExtensions = new List<string>(configuration.Analysis.IncludedExtensions),
+                    ExcludePatterns = new List<string>(configuration.Analysis.ExcludedPatterns)
                 },
                 Priority = TaskPriority.Normal,
                 MaxRetries = 3

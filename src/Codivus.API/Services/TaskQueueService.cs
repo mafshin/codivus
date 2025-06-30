@@ -16,6 +16,7 @@ namespace Codivus.API.Services
         private readonly ConcurrentQueue<string> _pendingQueue = new();
         private readonly ConcurrentDictionary<QueueTaskStatus, ConcurrentBag<string>> _tasksByStatus = new();
         private readonly SemaphoreSlim _queueSemaphore = new(0);
+        private readonly object _dequeueLock = new();
         private readonly ILogger<TaskQueueService<T>> _logger;
         
         protected ILogger<TaskQueueService<T>> Logger => _logger;
@@ -61,18 +62,26 @@ namespace Codivus.API.Services
             {
                 await _queueSemaphore.WaitAsync(cancellationToken);
 
-                // Try to get highest priority task
-                var taskId = GetNextTaskId();
-                if (taskId == null)
-                    continue;
-
-                if (_tasks.TryGetValue(taskId, out var task) && task.Status == QueueTaskStatus.Queued)
+                // Use lock to prevent race conditions between multiple workers
+                lock (_dequeueLock)
                 {
-                    await UpdateTaskStatusAsync(taskId, QueueTaskStatus.InProgress, cancellationToken: cancellationToken);
-                    task.StartedAt = DateTime.UtcNow;
-                    
-                    _logger.LogInformation("Dequeued task {TaskId} of type {TaskType}", task.TaskId, task.TaskType);
-                    return task;
+                    var taskId = GetNextTaskId();
+                    if (taskId == null)
+                        continue;
+
+                    if (_tasks.TryGetValue(taskId, out var task) && task.Status == QueueTaskStatus.Queued)
+                    {
+                        // Update status immediately within the lock to prevent other workers from taking it
+                        task.Status = QueueTaskStatus.InProgress;
+                        task.StartedAt = DateTime.UtcNow;
+                        
+                        // Update status tracking
+                        RemoveFromStatusBag(QueueTaskStatus.Queued, taskId);
+                        _tasksByStatus[QueueTaskStatus.InProgress].Add(taskId);
+                        
+                        _logger.LogInformation("Dequeued task {TaskId} of type {TaskType}", task.TaskId, task.TaskType);
+                        return task;
+                    }
                 }
             }
 
@@ -235,27 +244,33 @@ namespace Codivus.API.Services
             {
                 var queuedTaskIds = _tasksByStatus[QueueTaskStatus.Queued].ToList();
                 var taskId = queuedTaskIds
-                    .Where(id => _tasks.TryGetValue(id, out var t) && t.Priority == priority)
+                    .Where(id => _tasks.TryGetValue(id, out var t) && t.Priority == priority && t.Status == QueueTaskStatus.Queued)
                     .FirstOrDefault();
 
                 if (taskId != null)
                 {
-                    if (!peek)
-                    {
-                        RemoveFromStatusBag(QueueTaskStatus.Queued, taskId);
-                    }
                     return taskId;
                 }
             }
 
             // Fallback to FIFO
-            if (_pendingQueue.TryDequeue(out var nextId))
+            if (_pendingQueue.TryPeek(out var nextId))
             {
-                if (peek)
+                // Double check the task is still queued
+                if (_tasks.TryGetValue(nextId, out var task) && task.Status == QueueTaskStatus.Queued)
                 {
-                    _pendingQueue.Enqueue(nextId); // Put it back
+                    if (!peek)
+                    {
+                        _pendingQueue.TryDequeue(out _); // Actually remove it
+                    }
+                    return nextId;
                 }
-                return nextId;
+                else
+                {
+                    // Remove stale reference and try again
+                    _pendingQueue.TryDequeue(out _);
+                    return GetNextTaskId(peek);
+                }
             }
 
             return null;

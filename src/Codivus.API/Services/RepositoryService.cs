@@ -232,6 +232,7 @@ public class RepositoryService : IRepositoryService
                     RepositoryId = parent.RepositoryId,
                     Name = fileInfo.Name,
                     Path = Path.GetRelativePath(rootPath, filePath),
+                    Extension = Path.GetExtension(fileInfo.Name),
                     IsDirectory = false,
                     LastModified = fileInfo.LastWriteTime,
                     SizeInBytes = fileInfo.Length,

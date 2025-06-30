@@ -266,5 +266,101 @@ export default {
   
   deleteScanConfiguration(configurationId) {
     return apiClient.delete(`/scanning/configuration/${configurationId}`)
+  },
+
+  // Graph API
+  startGraphScan(repositoryId, configuration) {
+    console.log('API: Starting graph scan for repository:', repositoryId)
+    return apiClient.post(`/graph/scan/${repositoryId}`, configuration)
+      .then(response => {
+        console.log('API: Graph scan started:', response.data)
+        return response
+      })
+      .catch(error => {
+        console.error('API: Error starting graph scan:', error.message)
+        throw error
+      })
+  },
+
+  getGraphScanStatus(scanId) {
+    return apiClient.get(`/graph/scan/${scanId}/status`)
+  },
+
+  pauseGraphScan(scanId) {
+    return apiClient.post(`/graph/scan/${scanId}/pause`)
+  },
+
+  resumeGraphScan(scanId) {
+    return apiClient.post(`/graph/scan/${scanId}/resume`)
+  },
+
+  cancelGraphScan(scanId) {
+    return apiClient.post(`/graph/scan/${scanId}/cancel`)
+  },
+
+  // Graph nodes
+  getGraphNodes(repositoryId, filters = {}) {
+    const params = { repositoryId, ...filters }
+    return apiClient.get('/graph/nodes', { params })
+  },
+
+  getGraphNode(nodeId) {
+    return apiClient.get(`/graph/nodes/${nodeId}`)
+  },
+
+  getNodeDependencies(nodeId) {
+    return apiClient.get(`/graph/nodes/${nodeId}/dependencies`)
+  },
+
+  getNodeDependents(nodeId) {
+    return apiClient.get(`/graph/nodes/${nodeId}/dependents`)
+  },
+
+  getCallHierarchy(nodeId) {
+    return apiClient.get(`/graph/nodes/${nodeId}/call-hierarchy`)
+  },
+
+  getTypeHierarchy(nodeId) {
+    return apiClient.get(`/graph/nodes/${nodeId}/type-hierarchy`)
+  },
+
+  // Graph analysis
+  performImpactAnalysis(nodeId, analysisType) {
+    return apiClient.post(`/graph/nodes/${nodeId}/impact-analysis`, { analysisType })
+  },
+
+  getCouplingAnalysis(repositoryId) {
+    return apiClient.get(`/graph/coupling-analysis/${repositoryId}`)
+  },
+
+  getSubgraph(nodeId, options = {}) {
+    return apiClient.post(`/graph/nodes/${nodeId}/subgraph`, options)
+  },
+
+  // Graph metrics and visualization
+  getGraphMetrics(repositoryId) {
+    return apiClient.get(`/graph/metrics/${repositoryId}`)
+  },
+
+  getGraphVisualization(repositoryId) {
+    return apiClient.get(`/graph/visualization/${repositoryId}`)
+  },
+
+  // Custom graph queries
+  executeGraphQuery(query) {
+    return apiClient.post('/graph/query', { query })
+  },
+
+  // Enhanced scanning with graph context
+  scanFileWithGraphContext(fileData, options = {}) {
+    return apiClient.post('/enhancedscanning/scan-file', { ...fileData, ...options })
+  },
+
+  scanFilesWithGraphContext(filesData, options = {}) {
+    return apiClient.post('/enhancedscanning/scan-files', { files: filesData, ...options })
+  },
+
+  analyzeDependenciesWithGraph(repositoryId, analysisOptions = {}) {
+    return apiClient.post('/enhancedscanning/analyze-dependencies', { repositoryId, ...analysisOptions })
   }
 }

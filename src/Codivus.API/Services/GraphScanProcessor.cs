@@ -236,6 +236,9 @@ namespace Codivus.API.Services
         {
             var files = new List<RepositoryFile>();
 
+            _logger.LogInformation("Getting files to process for task {TaskId} with scope {Scope} and target path {TargetPath}", 
+                task.TaskId, task.Scope, task.TargetPath);
+
             switch (task.Scope)
             {
                 case ScanScope.File:
@@ -260,20 +263,21 @@ namespace Codivus.API.Services
                 case ScanScope.Repository:
                     // All eligible files in the repository
                     var allFiles = await GetAllRepositoryFilesAsync(repository);
-                    files.AddRange(allFiles.Where(f => IsFileEligible(f, task.Options)));
+                    var eligibleFiles = allFiles.Where(f => IsFileEligible(f, task.Options)).ToList();
+                    _logger.LogInformation("Found {EligibleFiles} eligible files out of {TotalFiles} total files", 
+                        eligibleFiles.Count, allFiles.Count);
+                    files.AddRange(eligibleFiles);
                     break;
             }
 
-            // Filter by file IDs if specified
+            // Note: Skipping FileIds filtering since RepositoryFile IDs are regenerated each scan
+            // The eligibility filtering above (extensions, patterns, etc.) provides sufficient filtering
             if (task.FileIds.Any())
             {
-                var fileIdGuids = task.FileIds.Select(id => Guid.TryParse(id, out var guid) ? guid : Guid.Empty)
-                    .Where(g => g != Guid.Empty)
-                    .ToHashSet();
-                    
-                files = files.Where(f => fileIdGuids.Contains(f.Id)).ToList();
+                _logger.LogInformation("Skipping FileIds filtering - using eligibility filters instead. Task had {FileIdCount} file IDs", task.FileIds.Count);
             }
 
+            _logger.LogInformation("Returning {FileCount} files to process for task {TaskId}", files.Count, task.TaskId);
             return files;
         }
 
@@ -324,7 +328,9 @@ namespace Codivus.API.Services
         private async Task<List<RepositoryFile>> GetAllRepositoryFilesAsync(Repository repository)
         {
             var structure = await _repositoryService.GetRepositoryStructureAsync(repository.Id);
-            return FlattenFiles(structure).Where(f => !f.IsDirectory).ToList();
+            var allFiles = FlattenFiles(structure).Where(f => !f.IsDirectory).ToList();
+            _logger.LogInformation("Found {TotalFiles} files in repository structure", allFiles.Count);
+            return allFiles;
         }
 
         private List<RepositoryFile> FlattenFiles(RepositoryFile? root)
@@ -353,8 +359,8 @@ namespace Codivus.API.Services
         {
             var extension = Path.GetExtension(file.Path);
             
-            // Check for C# files
-            if (!extension.Equals(".cs", StringComparison.OrdinalIgnoreCase))
+            // Check for supported file extensions
+            if (!options.SupportedExtensions.Any(ext => extension.Equals(ext, StringComparison.OrdinalIgnoreCase)))
                 return false;
 
             // Check include patterns

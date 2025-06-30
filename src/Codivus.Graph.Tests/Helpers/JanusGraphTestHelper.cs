@@ -9,7 +9,7 @@ namespace Codivus.Graph.Tests.Helpers
     /// </summary>
     public static class JanusGraphTestHelper
     {
-        private const string DefaultHost = "host.docker.internal";
+        private const string DefaultHost = "localhost";
         private const int DefaultPort = 8182;
 
         /// <summary>
