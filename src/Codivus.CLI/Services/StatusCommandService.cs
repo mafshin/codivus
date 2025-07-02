@@ -1,25 +1,24 @@
 using System.Diagnostics;
 using Codivus.CLI.Infrastructure;
 using Codivus.CLI.Models;
-using Codivus.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Codivus.CLI.Services;
 
 public class StatusCommandService
 {
-    private readonly IRepositoryService _repositoryService;
+    private readonly ApiClientService _apiClient;
     private readonly IOutputService _outputService;
     private readonly IConfigurationService _configurationService;
     private readonly ILogger<StatusCommandService> _logger;
 
     public StatusCommandService(
-        IRepositoryService repositoryService,
+        ApiClientService apiClient,
         IOutputService outputService,
         IConfigurationService configurationService,
         ILogger<StatusCommandService> logger)
     {
-        _repositoryService = repositoryService;
+        _apiClient = apiClient;
         _outputService = outputService;
         _configurationService = configurationService;
         _logger = logger;
@@ -48,12 +47,13 @@ public class StatusCommandService
                     // Get specific repository status
                     if (Guid.TryParse(options.RepositoryId, out var repoId))
                     {
-                        var repository = await _repositoryService.GetRepositoryByIdAsync(repoId);
+                        var repoResponse = await _apiClient.GetRepositoryByIdAsync(repoId);
+                        var repository = repoResponse.Success ? repoResponse.Data : null;
                     if (repository != null)
                     {
                             statusResult.Repositories = new List<RepositoryStatus>
                             {
-                                await GetRepositoryStatusAsync(repository, options)
+                                await GetRepositoryStatusAsync(MapToRepository(repository), options)
                             };
                         }
                     }
@@ -61,7 +61,10 @@ public class StatusCommandService
                 else
                 {
                     // Get all repositories status
-                    var repositories = await _repositoryService.GetAllRepositoriesAsync();
+                    var repositoriesResponse = await _apiClient.GetAllRepositoriesAsync();
+                    var repositories = repositoriesResponse.Success && repositoriesResponse.Data != null 
+                        ? repositoriesResponse.Data.Select(r => MapToRepository(r)).ToList()
+                        : new List<Repository>();
                     statusResult.Repositories = new List<RepositoryStatus>();
                     
                     foreach (var repo in repositories)
@@ -103,16 +106,16 @@ public class StatusCommandService
         }
     }
 
-    private async Task<RepositoryStatus> GetRepositoryStatusAsync(Core.Models.Repository repository, StatusOptions options)
+    private async Task<RepositoryStatus> GetRepositoryStatusAsync(Repository repository, StatusOptions options)
     {
         var status = new RepositoryStatus
         {
             Id = repository.Id.ToString(),
             Name = repository.Name,
             Path = repository.Location,
-            Url = repository.Type == Core.Models.RepositoryType.GitHub ? repository.Location : null,
+            Url = repository.Type == "GitHub" ? repository.Location : null,
             Branch = repository.DefaultBranch,
-            LastScanned = repository.LastScanAt,
+            LastScanned = repository.LastScannedAt,
             Status = "unknown"
         };
 
@@ -333,6 +336,20 @@ public class StatusCommandService
         {
             return 0;
         }
+    }
+
+    private Repository MapToRepository(RepositoryDto dto)
+    {
+        return new Repository
+        {
+            Id = dto.Id,
+            Name = dto.Name,
+            Location = dto.Location,
+            Type = dto.TypeName,
+            DefaultBranch = dto.DefaultBranch,
+            AddedAt = dto.AddedAt,
+            LastScannedAt = dto.LastScannedAt
+        };
     }
 
     private async Task<MemoryUsage> GetMemoryUsageAsync()

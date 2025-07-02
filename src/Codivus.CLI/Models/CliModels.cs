@@ -97,7 +97,14 @@ public class GraphOptions
     
     // Graph scanning options
     public string? ScanMode { get; set; } = "full";
-    public int BatchSize { get; set; } = 100;
+    public int? BatchSize { get; set; } = 100;
+    
+    // Analysis options
+    public string? AnalysisType { get; set; }
+    public double? Threshold { get; set; }
+    
+    // Export options
+    public string? Format { get; set; }
 }
 
 public class IssueFilterOptions
@@ -273,6 +280,164 @@ public class ScanListResult
 {
     public List<ScanInfo> Scans { get; set; } = new();
     public int TotalCount { get; set; }
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+// Graph result models
+public class GraphScanResult
+{
+    public string ScanId { get; set; } = "";
+    public string RepositoryId { get; set; } = "";
+    public string RepositoryName { get; set; } = "";
+    public string Status { get; set; } = "";
+    public int NodesCreated { get; set; }
+    public int RelationshipsCreated { get; set; }
+    public int FilesProcessed { get; set; }
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class GraphQueryResult
+{
+    public string Query { get; set; } = "";
+    public List<GraphQueryItem> Results { get; set; } = new();
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class GraphQueryItem
+{
+    public string Type { get; set; } = "";
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public Dictionary<string, object> Properties { get; set; } = new();
+}
+
+public class GraphMetricsResult
+{
+    public string RepositoryId { get; set; } = "";
+    public GraphMetricsDto Metrics { get; set; } = new();
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class GraphAnalysisResult
+{
+    public string RepositoryId { get; set; } = "";
+    public string AnalysisType { get; set; } = "";
+    public List<AnalysisItem> Results { get; set; } = new();
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class AnalysisItem
+{
+    public string Type { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public double Score { get; set; }
+    public string Severity { get; set; } = "";
+    public List<string> Recommendations { get; set; } = new();
+}
+
+public class GraphExportResult
+{
+    public string RepositoryId { get; set; } = "";
+    public string ExportFormat { get; set; } = "";
+    public string OutputFile { get; set; } = "";
+    public long FileSizeBytes { get; set; }
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class GraphVisualizationResult
+{
+    public string RepositoryId { get; set; } = "";
+    public string OutputFile { get; set; } = "";
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+// Issues result models
+public class IssuesListResult
+{
+    public List<IssueInfo> Issues { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int FilteredCount { get; set; }
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class IssueDetailResult
+{
+    public IssueInfo? Issue { get; set; }
+    public string? SourceCode { get; set; }
+    public List<string> RelatedIssues { get; set; } = new();
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class IssueUpdateResult
+{
+    public string IssueId { get; set; } = "";
+    public string Operation { get; set; } = "";
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class IssueExportResult
+{
+    public string OutputFile { get; set; } = "";
+    public string ExportFormat { get; set; } = "";
+    public int IssuesExported { get; set; }
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class IssueStatsResult
+{
+    public int TotalIssues { get; set; }
+    public Dictionary<string, int> IssuesBySeverity { get; set; } = new();
+    public Dictionary<string, int> IssuesByCategory { get; set; } = new();
+    public Dictionary<string, int> IssuesByFile { get; set; } = new();
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+// LLM result models
+public class LlmProvidersResult
+{
+    public List<LlmProviderInfo> Providers { get; set; } = new();
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class LlmProviderInfo
+{
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "";
+    public bool IsAvailable { get; set; }
+    public string Status { get; set; } = "";
+    public string Endpoint { get; set; } = "";
+}
+
+public class LlmModelsResult
+{
+    public string Provider { get; set; } = "";
+    public List<string> Models { get; set; } = new();
+    public bool IsProviderAvailable { get; set; }
+    public bool Success { get; set; }
+    public TimeSpan Duration { get; set; }
+}
+
+public class LlmTestResult
+{
+    public string Provider { get; set; } = "";
+    public bool IsAvailable { get; set; }
+    public string Status { get; set; } = "";
+    public string Message { get; set; } = "";
+    public List<string> AvailableModels { get; set; } = new();
     public bool Success { get; set; }
     public TimeSpan Duration { get; set; }
 }

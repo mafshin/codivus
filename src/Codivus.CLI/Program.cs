@@ -6,14 +6,7 @@ using Microsoft.Extensions.Logging;
 using Codivus.CLI.Commands;
 using Codivus.CLI.Services;
 using Codivus.CLI.Infrastructure;
-using Codivus.Core.Interfaces;
-using Codivus.API.Services;
-using Codivus.API.Data;
-using Codivus.Graph.Services;
-using Codivus.Graph.Configuration;
-using Codivus.Graph.Interfaces;
 using Spectre.Console;
-using System.IO.Abstractions;
 
 namespace Codivus.CLI;
 
@@ -84,19 +77,9 @@ public class Program
                     builder.AddConfiguration(configuration.GetSection("Logging"));
                 });
 
-                // System dependencies
-                services.AddScoped<IFileSystem, FileSystem>();
-                services.AddScoped<JsonDataStore>();
-                
-                // Core Services
-                services.AddScoped<IRepositoryService, RepositoryService>();
-                services.AddScoped<IScanningService, ScanningService>();
-                
-                // Graph Services
-                services.Configure<GraphConfiguration>(configuration.GetSection("Codivus:Graph"));
-                services.AddScoped<IGraphStorageService, GraphStorageService>();
-                services.AddScoped<IGraphQueryService, GraphQueryService>();
-                services.AddScoped<IGraphEnhancedScanningService, GraphEnhancedScanningService>();
+                // HTTP Client for API communication
+                services.AddHttpClient<ApiClientService>();
+                services.AddScoped<ApiClientService>();
 
                 // CLI Services
                 services.AddScoped<IOutputService, OutputService>();
@@ -112,6 +95,7 @@ public class Program
                 services.AddScoped<SettingsCommandService>();
                 services.AddScoped<InitCommandService>();
                 services.AddScoped<StatusCommandService>();
+                services.AddScoped<LlmCommandService>();
             })
             .Build();
     }
@@ -150,6 +134,7 @@ public class Program
         rootCommand.AddCommand(SettingsCommand.Create(services));
         rootCommand.AddCommand(InitCommand.Create(services));
         rootCommand.AddCommand(StatusCommand.Create(services));
+        rootCommand.AddCommand(new LlmCommand(services));
 
         return rootCommand;
     }

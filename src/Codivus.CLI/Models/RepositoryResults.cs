@@ -1,5 +1,3 @@
-using Codivus.Core.Models;
-
 namespace Codivus.CLI.Models;
 
 public class RepositoryResult
@@ -32,8 +30,10 @@ public class RepositoryDetail
 public class RepositoryValidationResult
 {
     public string Path { get; set; } = "";
-    public RepositoryType Type { get; set; }
+    public string Type { get; set; } = "";
     public bool IsValid { get; set; }
+    public List<string> ValidationErrors { get; set; } = new();
+    public List<string> ValidationWarnings { get; set; } = new();
     public bool Success { get; set; }
     public TimeSpan Duration { get; set; }
 }
