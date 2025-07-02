@@ -1,0 +1,35 @@
+# Build outputs
+bin/
+obj/
+build/
+dist/
+target/
+
+# Dependencies
+node_modules/
+packages/
+vendor/
+
+# IDE files
+.vs/
+.vscode/
+*.suo
+*.user
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Version control
+.git/
+.svn/
+
+# Codivus files
+.codivus/cache/
+.codivus/temp/

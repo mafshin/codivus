@@ -1,0 +1,25 @@
+# Codivus cache and temporary files
+.codivus/cache/
+.codivus/temp/
+.codivus/reports/
+
+# Build outputs
+bin/
+obj/
+build/
+dist/
+
+# Dependencies
+node_modules/
+packages/
+
+# IDE files
+.vs/
+.vscode/
+*.suo
+*.user
+.idea/
+
+# Logs
+*.log
+logs/

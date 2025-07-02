@@ -1,0 +1,23 @@
+{
+  "filePatterns": [
+    "*.cs",
+    "*.js",
+    "*.ts",
+    "*.py",
+    "*.java"
+  ],
+  "excludePatterns": [
+    "bin/**",
+    "obj/**",
+    "node_modules/**",
+    ".git/**",
+    "*.min.js"
+  ],
+  "maxFileSize": 1048576,
+  "enableParallelProcessing": true,
+  "maxConcurrency": 2,
+  "scanDepth": "basic",
+  "enableSecurityScanning": true,
+  "enablePerformanceAnalysis": false,
+  "enableArchitectureAnalysis": false
+}

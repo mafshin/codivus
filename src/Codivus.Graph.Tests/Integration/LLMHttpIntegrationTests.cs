@@ -14,7 +14,7 @@ namespace Codivus.Graph.Tests.Integration
     {
         private readonly HttpClient _httpClient;
         private readonly ITestOutputHelper _output;
-        private readonly string _llmBaseUrl = "http://host.docker.internal:1234";
+        private readonly string _llmBaseUrl = "http://localhost:1234";
 
         public LLMHttpIntegrationTests(ITestOutputHelper output)
         {

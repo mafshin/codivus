@@ -30,7 +30,7 @@ dotnet test --filter "GraphEmbeddingServiceTests|ContextualPromptBuilderTests|Gr
 - **LLMConnectivityTests.cs** - Basic LLM connectivity and code analysis
 - **LLMHttpIntegrationTests.cs** - Complex security analysis workflows
 
-**⚠️ Integration tests require OpenAI-compatible LLM at `http://host.docker.internal:1234`**
+**⚠️ Integration tests require OpenAI-compatible LLM at `http://localhost:1234`**
 
 ## CI/CD Compatibility
 

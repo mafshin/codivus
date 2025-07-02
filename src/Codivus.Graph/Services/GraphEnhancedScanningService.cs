@@ -24,7 +24,7 @@ namespace Codivus.Graph.Services
         private readonly HttpClient _httpClient;
         private readonly ILogger<GraphEnhancedScanningService> _logger;
         
-        private const string LLM_ENDPOINT = "http://host.docker.internal:1234/api/v0/models";
+        private const string LLM_ENDPOINT = "http://localhost:1234/api/v0/models";
         private const string MODEL_NAME = "qwen3-0.6b-mlx";
 
         public GraphEnhancedScanningService(

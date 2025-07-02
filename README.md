@@ -104,12 +104,12 @@ dotnet test --filter "GraphEmbeddingServiceTests|ContextualPromptBuilderTests|Gr
 ### Integration Test Requirements
 
 #### LLM Integration Tests
-- **Service**: OpenAI-compatible LLM at `http://host.docker.internal:1234`
+- **Service**: OpenAI-compatible LLM at `http://localhost:1234`
 - **Tests**: 6 tests covering connectivity, code analysis, security analysis
 - **Status**: ✅ Working with real LLM calls
 
 #### JanusGraph Integration Tests
-- **Service**: JanusGraph at `host.docker.internal:8182`
+- **Service**: JanusGraph at `localhost:8182`
 - **Tests**: 9 tests covering graph operations
 - **Status**: Properly skipped when service unavailable
 

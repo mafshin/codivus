@@ -1,0 +1,12 @@
+{
+  "name": "Codivus.CLI",
+  "version": "1.0.0",
+  "template": "basic",
+  "created": "2025-06-30T20:36:18.336479Z",
+  "settings": {
+    "defaultBranch": "main",
+    "enableGraph": true,
+    "enableLLM": true,
+    "autoScan": false
+  }
+}
