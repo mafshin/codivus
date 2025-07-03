@@ -87,6 +87,7 @@ public class ScanOptions
 public class GraphOptions
 {
     public string? RepositoryId { get; set; }
+    public string? ScanId { get; set; }
     public string? Query { get; set; }
     public string? NodeId { get; set; }
     public int MaxDepth { get; set; } = 3;

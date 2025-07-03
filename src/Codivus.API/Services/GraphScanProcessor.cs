@@ -163,12 +163,31 @@ namespace Codivus.API.Services
         {
             try
             {
-                var filePath = file.Path;
+                // Convert relative path to absolute path for analysis
+                var filePath = Path.IsPathRooted(file.Path) 
+                    ? file.Path 
+                    : Path.Combine(repository.Location, file.Path);
+                
+                _logger.LogDebug("Processing file: Original={OriginalPath}, Repository={RepositoryLocation}, Final={FinalPath}", 
+                    file.Path, repository.Location, filePath);
                 
                 // Check file size limits
-                if (new FileInfo(filePath).Length > task.Options.MaxFileSizeBytes)
+                try
                 {
-                    _logger.LogWarning("Skipping file {FilePath}: exceeds max size limit", filePath);
+                    if (new FileInfo(filePath).Length > task.Options.MaxFileSizeBytes)
+                    {
+                        _logger.LogWarning("Skipping file {FilePath}: exceeds max size limit", filePath);
+                        return;
+                    }
+                }
+                catch (FileNotFoundException)
+                {
+                    _logger.LogWarning("Skipping file {FilePath}: file not found for size check", filePath);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Skipping file {FilePath}: unable to check file size", filePath);
                     return;
                 }
 

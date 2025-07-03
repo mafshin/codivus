@@ -95,10 +95,12 @@ namespace Codivus.API.BackgroundServices
                         // Requeue if retries available
                         if (task.RetryCount < task.MaxRetries)
                         {
+                            var originalTaskId = task.TaskId;
                             task.RetryCount++;
+                            task.TaskId = Guid.NewGuid().ToString(); // Generate new ID for retry
                             await taskQueue.EnqueueAsync(task, cancellationToken);
-                            _logger.LogInformation("Requeued task {TaskId} (retry {RetryCount}/{MaxRetries})",
-                                task.TaskId, task.RetryCount, task.MaxRetries);
+                            _logger.LogInformation("Requeued task {OriginalTaskId} as {NewTaskId} (retry {RetryCount}/{MaxRetries})",
+                                originalTaskId, task.TaskId, task.RetryCount, task.MaxRetries);
                         }
                     }
                 }

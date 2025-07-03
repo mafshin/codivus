@@ -559,10 +559,10 @@ public class ApiClientService
     {
         try
         {
-            var json = JsonSerializer.Serialize(request, _jsonOptions);
+            var json = JsonSerializer.Serialize(request.Configuration, _jsonOptions);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
             
-            var response = await _httpClient.PostAsync("/api/graph/scan", content);
+            var response = await _httpClient.PostAsync($"/api/graph/scan/{request.RepositoryId}", content);
             var responseContent = await response.Content.ReadAsStringAsync();
             
             if (response.IsSuccessStatusCode)
@@ -589,6 +589,42 @@ public class ApiClientService
             {
                 Success = false,
                 Message = "Failed to start graph scan",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+
+    public async Task<ApiResponse<GraphScanProgressDto>> GetGraphScanStatusAsync(string scanId)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/graph/scan/{scanId}/status");
+            var content = await response.Content.ReadAsStringAsync();
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var graphProgress = JsonSerializer.Deserialize<GraphScanProgressDto>(content, _jsonOptions);
+                return new ApiResponse<GraphScanProgressDto>
+                {
+                    Success = true,
+                    Data = graphProgress
+                };
+            }
+            
+            return new ApiResponse<GraphScanProgressDto>
+            {
+                Success = false,
+                Message = $"API call failed: {response.StatusCode}",
+                Errors = new List<string> { content }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting graph scan status {ScanId}", scanId);
+            return new ApiResponse<GraphScanProgressDto>
+            {
+                Success = false,
+                Message = "Failed to get graph scan status",
                 Errors = new List<string> { ex.Message }
             };
         }

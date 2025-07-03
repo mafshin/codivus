@@ -781,7 +781,7 @@ public class OutputService : IOutputService
             [bold]Relationships Created:[/] {result.RelationshipsCreated:N0}
             """))
         {
-            Header = new PanelHeader($"[{(result.Success ? "green" : "red")}]{statusIcon} Graph Scan Complete[/]"),
+            Header = new PanelHeader($"[{(result.Success ? "green" : "red")}]{statusIcon} Graph Scan Started[/]"),
             Border = BoxBorder.Rounded,
             BorderStyle = new Style(statusColor)
         };

@@ -63,18 +63,45 @@ public class GraphCommandService
             }
 
             // Create graph scan configuration
-            var graphScanConfig = new GraphScanConfigurationDto
+            var scanMode = options.ScanMode?.ToLowerInvariant() switch
             {
-                Id = Guid.NewGuid(),
-                RepositoryId = repository.Id,
-                ScanMode = options.ScanMode ?? "Full",
-                BatchSize = options.BatchSize.HasValue ? options.BatchSize.Value : 100,
-                ProcessCodeElements = true,
-                ProcessRelationships = true,
-                ProcessMetrics = true,
-                MaxConcurrentTasks = 4,
-                ContinueOnError = true,
-                CreatedAt = DateTime.UtcNow
+                "full" => 0,
+                "incremental" => 1,
+                "differential" => 2,
+                _ => 1 // Default to Incremental
+            };
+
+            var graphScanConfig = new GraphScanRequestDto
+            {
+                Mode = scanMode,
+                Processing = new ProcessingConfigurationDto
+                {
+                    BatchSize = options.BatchSize ?? 100,
+                    MaxConcurrentTasks = 4,
+                    ContinueOnError = true
+                },
+                Analysis = new AnalysisConfigurationDto
+                {
+                    EnableComplexityAnalysis = true,
+                    EnableDependencyAnalysis = true,
+                    EnableSecurityAnalysis = true,
+                    EnablePatternAnalysis = true
+                },
+                Relationships = new RelationshipConfigurationDto
+                {
+                    IncludeInheritance = true,
+                    IncludeImplementations = true,
+                    IncludeMethodCalls = true,
+                    IncludeFieldAccess = true,
+                    IncludeDependencies = true
+                },
+                Metrics = new MetricsConfigurationDto
+                {
+                    CalculateComplexity = true,
+                    CalculateCoupling = true,
+                    CalculateCohesion = true,
+                    CalculateInstability = true
+                }
             };
 
             var startRequest = new StartGraphScanRequest
@@ -87,16 +114,21 @@ public class GraphCommandService
             var response = await _apiClient.StartGraphScanAsync(startRequest);
             if (!response.Success || response.Data == null)
             {
-                return CommandResult<GraphScanResult>.ErrorResult(response.Message ?? "Failed to start graph scan");
+                var errorMessage = response.Message ?? "Failed to start graph scan";
+                if (response.Errors != null && response.Errors.Any())
+                {
+                    errorMessage += ": " + string.Join(" ", response.Errors);
+                }
+                return CommandResult<GraphScanResult>.ErrorResult(errorMessage);
             }
 
             var scanProgress = response.Data;
             var result = new GraphScanResult
             {
-                ScanId = scanProgress.ScanId.ToString(),
+                ScanId = scanProgress.ScanId,
                 RepositoryId = repository.Id.ToString(),
                 RepositoryName = repository.Name,
-                Status = scanProgress.Status,
+                Status = scanProgress.StatusName ?? "Started",
                 NodesCreated = scanProgress.NodesCreated,
                 RelationshipsCreated = scanProgress.RelationshipsCreated,
                 FilesProcessed = scanProgress.FilesProcessed,
@@ -114,6 +146,57 @@ public class GraphCommandService
         {
             _logger.LogError(ex, "Error starting graph scan for repository: {RepositoryId}", options.RepositoryId);
             return CommandResult<GraphScanResult>.ErrorResult($"Failed to start graph scan: {ex.Message}");
+        }
+    }
+
+    public async Task<CommandResult<GraphScanResult>> GetScanStatusAsync(GraphOptions options)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        
+        try
+        {
+            _logger.LogInformation("Getting graph scan status for scan: {ScanId}", options.ScanId);
+
+            if (string.IsNullOrEmpty(options.ScanId))
+            {
+                return CommandResult<GraphScanResult>.ErrorResult("Scan ID is required");
+            }
+
+            var response = await _apiClient.GetGraphScanStatusAsync(options.ScanId);
+            if (!response.Success || response.Data == null)
+            {
+                var errorMessage = response.Message ?? "Failed to get scan status";
+                if (response.Errors != null && response.Errors.Any())
+                {
+                    errorMessage += ": " + string.Join(" ", response.Errors);
+                }
+                return CommandResult<GraphScanResult>.ErrorResult(errorMessage);
+            }
+
+            var scanProgress = response.Data;
+            var result = new GraphScanResult
+            {
+                ScanId = scanProgress.ScanId,
+                RepositoryId = scanProgress.RepositoryId.ToString(),
+                RepositoryName = "", // Not available in status response
+                Status = scanProgress.StatusName ?? "Unknown",
+                NodesCreated = scanProgress.NodesCreated,
+                RelationshipsCreated = scanProgress.RelationshipsCreated,
+                FilesProcessed = scanProgress.FilesProcessed,
+                Success = true
+            };
+
+            stopwatch.Stop();
+            result.Duration = stopwatch.Elapsed;
+
+            return CommandResult<GraphScanResult>.SuccessResult(
+                result,
+                $"Graph scan status retrieved for scan: {options.ScanId}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting graph scan status for scan: {ScanId}", options.ScanId);
+            return CommandResult<GraphScanResult>.ErrorResult($"Failed to get scan status: {ex.Message}");
         }
     }
 

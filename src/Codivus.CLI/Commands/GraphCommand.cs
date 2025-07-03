@@ -14,6 +14,7 @@ public static class GraphCommand
 
         // Subcommands
         command.AddCommand(CreateScanCommand(services));
+        command.AddCommand(CreateStatusCommand(services));
         command.AddCommand(CreateQueryCommand(services));
         command.AddCommand(CreateMetricsCommand(services));
         command.AddCommand(CreateVisualizationCommand(services));
@@ -60,6 +61,41 @@ public static class GraphCommand
 
             var graphService = services.GetRequiredService<GraphCommandService>();
             var result = await graphService.StartGraphScanAsync(options);
+            
+            var outputService = services.GetRequiredService<IOutputService>();
+            await outputService.WriteResultsAsync(result);
+            
+            context.ExitCode = result.Success ? 0 : 1;
+        });
+
+        return command;
+    }
+
+    private static Command CreateStatusCommand(IServiceProvider services)
+    {
+        var command = new Command("status", "Check graph scan status");
+
+        var scanIdOption = new Option<string>(
+            "--scan-id",
+            description: "Scan ID to check status for") { IsRequired = true };
+        var outputFileOption = new Option<string>(
+            "--output",
+            description: "Output file path");
+
+        command.AddOption(scanIdOption);
+        command.AddOption(outputFileOption);
+
+        command.SetHandler(async (context) =>
+        {
+            var options = new GraphOptions
+            {
+                ScanId = context.ParseResult.GetValueForOption(scanIdOption),
+                OutputFile = context.ParseResult.GetValueForOption(outputFileOption),
+                OutputFormat = context.ParseResult.GetValueForOption(Program.OutputFormatOption) ?? "console"
+            };
+
+            var graphService = services.GetRequiredService<GraphCommandService>();
+            var result = await graphService.GetScanStatusAsync(options);
             
             var outputService = services.GetRequiredService<IOutputService>();
             await outputService.WriteResultsAsync(result);

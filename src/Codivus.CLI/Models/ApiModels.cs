@@ -177,14 +177,60 @@ public class GraphScanConfigurationDto
 public class StartGraphScanRequest
 {
     public Guid RepositoryId { get; set; }
-    public GraphScanConfigurationDto Configuration { get; set; } = new();
+    public GraphScanRequestDto Configuration { get; set; } = new();
+}
+
+public class GraphScanRequestDto
+{
+    public int Mode { get; set; } = 1; // ScanMode.Incremental = 1
+    public ProcessingConfigurationDto? Processing { get; set; }
+    public AnalysisConfigurationDto? Analysis { get; set; }
+    public RelationshipConfigurationDto? Relationships { get; set; }
+    public MetricsConfigurationDto? Metrics { get; set; }
+}
+
+public class ProcessingConfigurationDto
+{
+    public int BatchSize { get; set; } = 100;
+    public int MaxConcurrentTasks { get; set; } = 4;
+    public bool ContinueOnError { get; set; } = true;
+    public List<string> IncludeFileExtensions { get; set; } = new();
+    public List<string> ExcludeFileExtensions { get; set; } = new();
+    public List<string> ExcludeDirectories { get; set; } = new();
+    public long MaxFileSizeBytes { get; set; } = 1048576; // 1MB
+}
+
+public class AnalysisConfigurationDto
+{
+    public bool EnableComplexityAnalysis { get; set; } = true;
+    public bool EnableDependencyAnalysis { get; set; } = true;
+    public bool EnableSecurityAnalysis { get; set; } = true;
+    public bool EnablePatternAnalysis { get; set; } = true;
+}
+
+public class RelationshipConfigurationDto
+{
+    public bool IncludeInheritance { get; set; } = true;
+    public bool IncludeImplementations { get; set; } = true;
+    public bool IncludeMethodCalls { get; set; } = true;
+    public bool IncludeFieldAccess { get; set; } = true;
+    public bool IncludeDependencies { get; set; } = true;
+}
+
+public class MetricsConfigurationDto
+{
+    public bool CalculateComplexity { get; set; } = true;
+    public bool CalculateCoupling { get; set; } = true;
+    public bool CalculateCohesion { get; set; } = true;
+    public bool CalculateInstability { get; set; } = true;
 }
 
 public class GraphScanProgressDto
 {
-    public Guid ScanId { get; set; }
+    public string ScanId { get; set; } = "";
+    public string Message { get; set; } = "";
     public Guid RepositoryId { get; set; }
-    public string Status { get; set; } = "";
+    public int Status { get; set; } = 0;
     public string CurrentTask { get; set; } = "";
     public int TasksCompleted { get; set; }
     public int TasksTotal { get; set; }
@@ -198,6 +244,19 @@ public class GraphScanProgressDto
     public DateTime StartedAt { get; set; }
     public DateTime? EstimatedCompletionAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+    
+    // Helper property for string representation
+    public string StatusName => Status switch
+    {
+        0 => "Pending",
+        1 => "Initializing", 
+        2 => "InProgress",
+        3 => "Paused",
+        4 => "Canceled",
+        5 => "Completed",
+        6 => "Failed",
+        _ => "Unknown"
+    };
 }
 
 public class GraphMetricsDto

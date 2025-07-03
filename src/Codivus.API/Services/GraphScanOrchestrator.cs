@@ -133,6 +133,17 @@ namespace Codivus.API.Services
                         .Where(t => t.Status == QueueTaskStatus.Completed)
                         .Sum(t => t.Checkpoint?.ProcessedFiles ?? 0);
 
+                    // Calculate nodes and relationships created
+                    progress.NodesCreated = scanTasks
+                        .Where(t => t.Status == QueueTaskStatus.Completed && t.Checkpoint?.State != null)
+                        .Sum(t => t.Checkpoint.State.ContainsKey("nodesCreated") ? 
+                            Convert.ToInt32(t.Checkpoint.State["nodesCreated"]) : 0);
+                    
+                    progress.RelationshipsCreated = scanTasks
+                        .Where(t => t.Status == QueueTaskStatus.Completed && t.Checkpoint?.State != null)
+                        .Sum(t => t.Checkpoint.State.ContainsKey("relationshipsCreated") ? 
+                            Convert.ToInt32(t.Checkpoint.State["relationshipsCreated"]) : 0);
+
                     return progress;
                 }
 
