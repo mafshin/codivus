@@ -15,27 +15,28 @@ using Xunit.Abstractions;
 
 namespace Codivus.Graph.Tests.Integration
 {
-    [Collection("JanusGraph Integration Tests")]
-    public class JanusGraphIntegrationTests : IAsyncLifetime
+    [Collection("Neo4j Integration Tests")]
+    public class Neo4jIntegrationTests : IAsyncLifetime
     {
         private readonly ITestOutputHelper _output;
         private readonly GraphStorageService _storageService;
         private readonly string _testRepositoryId;
         private readonly List<string> _createdNodeIds = new();
 
-        public JanusGraphIntegrationTests(ITestOutputHelper output)
+        public Neo4jIntegrationTests(ITestOutputHelper output)
         {
             _output = output;
             _testRepositoryId = $"test_repo_{Guid.NewGuid():N}";
 
             var configuration = new GraphConfiguration
             {
-                JanusGraph = new JanusGraphSettings
+                Neo4j = new Neo4jSettings
                 {
-                    Host = "localhost",
-                    Port = 8182,
-                    EnableSsl = false,
-                    ConnectionPoolSize = 4
+                    Uri = "bolt://localhost:7687",
+                    Username = "neo4j",
+                    Password = "pass12345678",
+                    EnableEncryption = false,
+                    MaxConnectionPoolSize = 4
                 }
             };
 
@@ -47,14 +48,14 @@ namespace Codivus.Graph.Tests.Integration
 
         public async Task InitializeAsync()
         {
-            var skipReason = await JanusGraphTestHelper.GetSkipReasonAsync();
+            var skipReason = await Neo4jTestHelper.GetSkipReasonAsync();
             if (skipReason != null)
             {
                 throw new SkipException(skipReason);
             }
 
             var initialized = await _storageService.InitializeAsync();
-            initialized.Should().BeTrue("JanusGraph initialization should succeed");
+            initialized.Should().BeTrue("Neo4j initialization should succeed");
             
             _output.WriteLine($"Initialized GraphStorageService for test repository: {_testRepositoryId}");
         }
@@ -87,7 +88,7 @@ namespace Codivus.Graph.Tests.Integration
 
         [Fact]
         [Trait("Category", "Integration")]
-        [Trait("Category", "JanusGraph")]
+        [Trait("Category", "Neo4j")]
         public async Task CreateAndRetrieveNode_ShouldWork()
         {
             // Arrange
@@ -127,7 +128,7 @@ namespace Codivus.Graph.Tests.Integration
 
         [Fact]
         [Trait("Category", "Integration")]
-        [Trait("Category", "JanusGraph")]
+        [Trait("Category", "Neo4j")]
         public async Task CreateRelationship_ShouldWork()
         {
             // Arrange
@@ -210,7 +211,7 @@ namespace Codivus.Graph.Tests.Integration
 
         [Fact]
         [Trait("Category", "Integration")]
-        [Trait("Category", "JanusGraph")]
+        [Trait("Category", "Neo4j")]
         public async Task CreateMultipleNodes_ShouldWork()
         {
             // Arrange
@@ -258,7 +259,7 @@ namespace Codivus.Graph.Tests.Integration
 
         [Fact]
         [Trait("Category", "Integration")]
-        [Trait("Category", "JanusGraph")]
+        [Trait("Category", "Neo4j")]
         public async Task FindNodesByType_ShouldReturnCorrectNodes()
         {
             // Arrange
@@ -307,7 +308,7 @@ namespace Codivus.Graph.Tests.Integration
 
         [Fact]
         [Trait("Category", "Integration")]
-        [Trait("Category", "JanusGraph")]
+        [Trait("Category", "Neo4j")]
         public async Task UpdateNode_ShouldModifyProperties()
         {
             // Arrange
@@ -366,7 +367,7 @@ namespace Codivus.Graph.Tests.Integration
 
         [Fact]
         [Trait("Category", "Integration")]
-        [Trait("Category", "JanusGraph")]
+        [Trait("Category", "Neo4j")]
         public async Task DeleteNode_ShouldRemoveFromGraph()
         {
             // Arrange
@@ -406,7 +407,7 @@ namespace Codivus.Graph.Tests.Integration
 
         [Fact]
         [Trait("Category", "Integration")]
-        [Trait("Category", "JanusGraph")]
+        [Trait("Category", "Neo4j")]
         public async Task GetMetrics_ShouldReturnGraphStatistics()
         {
             // Arrange - Create some test data
@@ -467,7 +468,7 @@ namespace Codivus.Graph.Tests.Integration
 
         [Fact]
         [Trait("Category", "Integration")]
-        [Trait("Category", "JanusGraph")]
+        [Trait("Category", "Neo4j")]
         public async Task CreateSchema_ShouldSucceed()
         {
             // Act
@@ -475,12 +476,12 @@ namespace Codivus.Graph.Tests.Integration
 
             // Assert
             schemaCreated.Should().BeTrue("Schema creation should succeed");
-            _output.WriteLine("JanusGraph schema created successfully");
+            _output.WriteLine("Neo4j schema created successfully");
         }
 
         [Fact]
         [Trait("Category", "Integration")]
-        [Trait("Category", "JanusGraph")]
+        [Trait("Category", "Neo4j")]
         public async Task ClearGraph_ShouldRemoveRepositoryData()
         {
             // Arrange - Create some nodes first

@@ -10,7 +10,7 @@ The name Codivus is made from “Code” + Latin vivus (alive), breathing insigh
 - **Real-time scanning dashboard**: Monitor scanning progress in real-time
 - **Interactive repository visualization**: Browse repository file structure through an interactive graph
 - **AI-powered analysis**: Leverage Ollama and LMStudio for advanced code analysis
-- **Graph-based code analysis**: Advanced semantic code understanding with JanusGraph
+- **Graph-based code analysis**: Advanced semantic code understanding with Neo4j
 - **Contextual prompt building**: Enhanced LLM prompts using code graph context
 - **Symbol relationship detection**: Automatic detection of code dependencies and relationships
 - **IssueHunter integration**: Advanced issue detection and categorization
@@ -19,12 +19,13 @@ The name Codivus is made from “Code” + Latin vivus (alive), breathing insigh
 
 ## 🏗️ Architecture
 
-Codivus consists of four main components:
+Codivus consists of five main components:
 
 1. **Codivus.UI**: Vue.js-based front-end application
 2. **Codivus.API**: C# .NET 8 RESTful API
 3. **Codivus.Core**: Core library containing shared business logic and models
-4. **Codivus.Graph**: Advanced graph-based analysis with JanusGraph integration
+4. **Codivus.Graph**: Neo4j-based graph analysis engine
+5. **Codivus.CLI**: Command-line interface for repository management
 
 ### Architecture Flow Diagram
 
@@ -51,7 +52,7 @@ d2 codivus-flow-diagram.d2 codivus-flow-diagram.svg
 - **Node.js** v16+
 - **npm** v7+
 - **Local LLM provider** (Ollama or LMStudio)
-- **JanusGraph** (optional, for advanced graph analysis)
+- **Neo4j** (required for graph analysis features)
 
 ## 🔧 Setup and Installation
 
@@ -73,7 +74,7 @@ See [Development Guide](./docs/development.md) for information on project struct
 #### Integration Tests  
 - **What**: Tests requiring external services
 - **When**: Local development only
-- **Types**: JanusGraph database tests, LLM service tests
+- **Types**: Neo4j database tests, LLM service tests
 
 ### Commands for Different Environments
 
@@ -108,10 +109,10 @@ dotnet test --filter "GraphEmbeddingServiceTests|ContextualPromptBuilderTests|Gr
 - **Tests**: 6 tests covering connectivity, code analysis, security analysis
 - **Status**: ✅ Working with real LLM calls
 
-#### JanusGraph Integration Tests
-- **Service**: JanusGraph at `localhost:8182`
-- **Tests**: 9 tests covering graph operations
-- **Status**: Properly skipped when service unavailable
+#### Neo4j Integration Tests
+- **Service**: Neo4j at `localhost:7687`
+- **Tests**: 9 tests covering graph operations, storage, and query services
+- **Status**: ✅ Migrated from JanusGraph to Neo4j
 
 ### Test Coverage Summary
 

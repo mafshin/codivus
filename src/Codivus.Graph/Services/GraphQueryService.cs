@@ -33,14 +33,16 @@ namespace Codivus.Graph.Services
             
             try
             {
-                // For now, return a simple implementation - this would be enhanced with actual Gremlin queries
                 var allNodes = nodeType.HasValue 
                     ? await _graphStorageService.GetNodesByTypeAsync(repositoryId, nodeType.Value, cancellationToken)
-                    : new List<CodeNode>(); // Empty list for now - would implement repository-wide search
+                    : await _graphStorageService.GetAllNodesAsync(repositoryId, cancellationToken);
 
                 var filteredNodes = allNodes.Where(n => 
                     (namePattern == "*" || n.Name.Contains(namePattern, StringComparison.OrdinalIgnoreCase)))
                     .Take(limit);
+
+                _logger.LogDebug("Found {Count} nodes matching pattern {Pattern} in repository {RepositoryId}", 
+                    filteredNodes.Count(), namePattern, repositoryId);
 
                 return filteredNodes;
             }
@@ -353,16 +355,16 @@ namespace Codivus.Graph.Services
         }
 
         public async Task<IEnumerable<Dictionary<string, object>>> ExecuteCustomQueryAsync(
-            string gremlinQuery,
+            string cypherQuery,
             Dictionary<string, object> parameters = null,
             CancellationToken cancellationToken = default)
         {
-            _logger.LogDebug("Executing custom Gremlin query");
+            _logger.LogDebug("Executing custom Cypher query");
             
             try
             {
-                // For now, return empty results - this would be implemented with actual Gremlin execution
-                _logger.LogWarning("Custom Gremlin query execution not yet implemented");
+                // For now, return empty results - this would be implemented with actual Cypher execution
+                _logger.LogWarning("Custom Cypher query execution not yet implemented");
                 return new List<Dictionary<string, object>>();
             }
             catch (Exception ex)

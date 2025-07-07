@@ -343,7 +343,18 @@ export default {
   },
 
   getGraphVisualization(repositoryId) {
-    return apiClient.get(`/graph/visualization/${repositoryId}`)
+    console.log('API: getGraphVisualization called with repositoryId:', repositoryId)
+    const url = `/graph/visualization/${repositoryId}`
+    console.log('API: Making GET request to:', url)
+    return apiClient.get(url)
+      .then(response => {
+        console.log('API: getGraphVisualization response:', response)
+        return response
+      })
+      .catch(error => {
+        console.error('API: getGraphVisualization error:', error)
+        throw error
+      })
   },
 
   // Custom graph queries

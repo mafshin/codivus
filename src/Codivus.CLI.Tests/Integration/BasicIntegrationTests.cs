@@ -16,7 +16,7 @@ namespace Codivus.CLI.Tests.Integration;
 
 public class BasicIntegrationTests : IAsyncLifetime
 {
-    private readonly JanusGraphTestContainer _janusGraphContainer;
+    private readonly Neo4jTestContainer _neo4jContainer;
     private readonly MockLLMServer _mockLLMServer;
     private readonly ILogger<BasicIntegrationTests> _logger;
     private IServiceProvider _serviceProvider = null!;
@@ -24,7 +24,7 @@ public class BasicIntegrationTests : IAsyncLifetime
 
     public BasicIntegrationTests()
     {
-        _janusGraphContainer = new JanusGraphTestContainer();
+        _neo4jContainer = new Neo4jTestContainer();
         _mockLLMServer = new MockLLMServer();
         
         var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information));
@@ -35,13 +35,13 @@ public class BasicIntegrationTests : IAsyncLifetime
     {
         _logger.LogInformation("Starting integration test environment...");
         
-        // Start both JanusGraph and LLM server
+        // Start both Neo4j and LLM server
         await Task.WhenAll(
-            _janusGraphContainer.InitializeAsync(),
+            _neo4jContainer.InitializeAsync(),
             _mockLLMServer.InitializeAsync()
         );
         
-        _logger.LogInformation($"JanusGraph container started on port {_janusGraphContainer.Port}");
+        _logger.LogInformation($"Neo4j container started on port {_neo4jContainer.Port}");
         _logger.LogInformation($"Mock LLM server started on port {_mockLLMServer.Port}");
 
         // Create test data directory
@@ -61,7 +61,7 @@ public class BasicIntegrationTests : IAsyncLifetime
         _logger.LogInformation("Disposing integration test environment...");
         
         await Task.WhenAll(
-            _janusGraphContainer.DisposeAsync(),
+            _neo4jContainer.DisposeAsync(),
             _mockLLMServer.DisposeAsync()
         );
 
@@ -83,10 +83,11 @@ public class BasicIntegrationTests : IAsyncLifetime
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Codivus:Graph:JanusGraph:Host"] = _janusGraphContainer.Host,
-                ["Codivus:Graph:JanusGraph:Port"] = _janusGraphContainer.Port.ToString(),
-                ["Codivus:Graph:JanusGraph:EnableSsl"] = "false",
-                ["Codivus:Graph:JanusGraph:ConnectionPoolSize"] = "4",
+                ["Codivus:Graph:Neo4j:Uri"] = _neo4jContainer.ConnectionString,
+                ["Codivus:Graph:Neo4j:Username"] = "neo4j",
+                ["Codivus:Graph:Neo4j:Password"] = "pass12345678",
+                ["Codivus:Graph:Neo4j:EnableEncryption"] = "false",
+                ["Codivus:Graph:Neo4j:MaxConnectionPoolSize"] = "4",
                 ["Codivus:LLM:DefaultProvider"] = "Ollama",
                 ["Codivus:LLM:Providers:Ollama:BaseUrl"] = _mockLLMServer.BaseUrl,
                 ["Codivus:LLM:Providers:Ollama:DefaultModel"] = "codellama:7b",
@@ -105,17 +106,17 @@ public class BasicIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task JanusGraph_Connection_ShouldSucceed()
+    public async Task Neo4j_Connection_ShouldSucceed()
     {
         // Arrange
         var graphStorageService = _serviceProvider.GetRequiredService<IGraphStorageService>();
         
         // Act & Assert
-        _logger.LogInformation("Testing JanusGraph connection...");
+        _logger.LogInformation("Testing Neo4j connection...");
         
         // Verify container is healthy
-        var isHealthy = await _janusGraphContainer.IsHealthyAsync();
-        isHealthy.Should().BeTrue("JanusGraph container should be healthy");
+        var isHealthy = await _neo4jContainer.IsHealthyAsync();
+        isHealthy.Should().BeTrue("Neo4j container should be healthy");
 
         // Test basic graph operations
         var testNode = new CodeNode
@@ -139,14 +140,14 @@ public class BasicIntegrationTests : IAsyncLifetime
 
         // Create node
         var created = await graphStorageService.CreateNodeAsync(testNode);
-        created.Should().Be(true, "Should be able to create node in JanusGraph");
+        created.Should().Be(true, "Should be able to create node in Neo4j");
 
         // Retrieve node
         var retrievedNode = await graphStorageService.GetNodeAsync("test-node-1");
         retrievedNode.Should().NotBeNull("Should be able to retrieve created node");
         retrievedNode!.Name.Should().Be("TestClass");
 
-        _logger.LogInformation("✅ JanusGraph connection and basic operations successful");
+        _logger.LogInformation("✅ Neo4j connection and basic operations successful");
     }
 
     [Fact]
@@ -296,9 +297,9 @@ public class BasicIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task SystemHealth_AllComponents_ShouldBeHealthy()
     {
-        // Test JanusGraph health
-        var janusHealthy = await _janusGraphContainer.IsHealthyAsync();
-        janusHealthy.Should().BeTrue("JanusGraph should be healthy");
+        // Test Neo4j health
+        var neo4jHealthy = await _neo4jContainer.IsHealthyAsync();
+        neo4jHealthy.Should().BeTrue("Neo4j should be healthy");
 
         // Test LLM mock server health
         using var httpClient = new HttpClient();

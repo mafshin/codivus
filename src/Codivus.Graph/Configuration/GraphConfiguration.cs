@@ -1,23 +1,26 @@
+using System;
+
 namespace Codivus.Graph.Configuration
 {
     public class GraphConfiguration
     {
         public bool Enabled { get; set; } = false;
-        public JanusGraphSettings JanusGraph { get; set; } = new();
+        public Neo4jSettings Neo4j { get; set; } = new();
         public ProcessingSettings Processing { get; set; } = new();
         public AnalysisSettings Analysis { get; set; } = new();
     }
 
-    public class JanusGraphSettings
+    public class Neo4jSettings
     {
-        public string Host { get; set; } = "localhost";
-        public int Port { get; set; } = 8182;
-        public string Username { get; set; } = "";
-        public string Password { get; set; } = "";
-        public int ConnectionPoolSize { get; set; } = 10;
-        public int ConnectionTimeout { get; set; } = 30000; // milliseconds
-        public bool EnableSsl { get; set; } = false;
-        public string GraphName { get; set; } = "codivus";
+        public string Uri { get; set; } = "bolt://localhost:7687";
+        public string Username { get; set; } = "neo4j";
+        public string Password { get; set; } = "pass12345678";
+        public string Database { get; set; } = "neo4j";
+        public int MaxConnectionPoolSize { get; set; } = 50;
+        public TimeSpan ConnectionAcquisitionTimeout { get; set; } = TimeSpan.FromMinutes(1);
+        public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
+        public bool EnableEncryption { get; set; } = false;
+        public string TrustStrategy { get; set; } = "TrustAllCertificates"; // TrustAllCertificates, TrustSystemCaSignedCertificates
     }
 
     public class ProcessingSettings

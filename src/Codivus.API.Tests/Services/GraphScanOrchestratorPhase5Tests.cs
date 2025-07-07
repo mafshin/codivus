@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Codivus.API.Services;
 using Codivus.Core.Interfaces;
 using Codivus.Core.Models;
+using Codivus.Graph.Interfaces;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -17,6 +18,7 @@ namespace Codivus.API.Tests.Services
     {
         private readonly Mock<ITaskQueue<GraphScanTask>> _mockTaskQueue;
         private readonly Mock<IRepositoryService> _mockRepositoryService;
+        private readonly Mock<IGraphStorageService> _mockGraphStorageService;
         private readonly Mock<ILogger<GraphScanOrchestrator>> _mockLogger;
         private readonly GraphScanOrchestrator _orchestrator;
 
@@ -24,11 +26,13 @@ namespace Codivus.API.Tests.Services
         {
             _mockTaskQueue = new Mock<ITaskQueue<GraphScanTask>>();
             _mockRepositoryService = new Mock<IRepositoryService>();
+            _mockGraphStorageService = new Mock<IGraphStorageService>();
             _mockLogger = new Mock<ILogger<GraphScanOrchestrator>>();
 
             _orchestrator = new GraphScanOrchestrator(
                 _mockTaskQueue.Object,
                 _mockRepositoryService.Object,
+                _mockGraphStorageService.Object,
                 _mockLogger.Object);
         }
 

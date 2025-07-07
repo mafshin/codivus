@@ -3,7 +3,7 @@ namespace Codivus.Graph.Configuration
     public class GraphScanningConfiguration
     {
         public bool Enabled { get; set; } = true;
-        public JanusGraphSettings JanusGraph { get; set; } = new();
+        public Neo4jSettings Neo4j { get; set; } = new();
         public ProcessingSettings Processing { get; set; } = new();
         public AnalysisSettings Analysis { get; set; } = new();
     }

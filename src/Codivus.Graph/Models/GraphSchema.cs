@@ -43,7 +43,7 @@ namespace Codivus.Graph.Models
         public static class PropertyKeys
         {
             // Common properties
-            public const string ExternalId = "externalId"; // Custom ID to avoid conflict with JanusGraph's internal ID
+            public const string ExternalId = "externalId"; // Custom ID for external references
             public const string Name = "name";
             public const string FullName = "fullName";
             public const string DisplayName = "displayName";

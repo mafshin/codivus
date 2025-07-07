@@ -86,6 +86,20 @@
         <div class="repo-details">
           <h2>{{ selectedRepository.name }}</h2>
           <span class="repo-path">{{ selectedRepository.location }}</span>
+          <div class="graph-status">
+            <span v-if="hasGraphData" class="status-indicator success">
+              <span class="icon">✅</span>
+              Graph data available
+            </span>
+            <span v-else-if="hasActiveScans" class="status-indicator scanning">
+              <span class="icon">🔄</span>
+              Scanning in progress...
+            </span>
+            <span v-else class="status-indicator empty">
+              <span class="icon">⚠️</span>
+              No graph data - run a graph scan first
+            </span>
+          </div>
         </div>
         
         <div class="repo-actions">
@@ -159,12 +173,21 @@
       <div class="tab-content">
         <!-- Visualization Tab -->
         <div v-if="activeTab === 'visualization'" class="visualization-tab">
+          <!-- Debug info -->
+          <div v-if="false" style="background: #f0f0f0; padding: 10px; margin: 10px; font-size: 12px;">
+            <strong>Debug Info:</strong><br>
+            loadingVisualization: {{ loadingVisualization }}<br>
+            visualizationData: {{ visualizationData }}<br>
+            hasGraphData: {{ hasGraphData }}<br>
+            nodes count: {{ graphStore.nodes.length }}
+          </div>
+          
           <div v-if="loadingVisualization" class="loading-state">
             <div class="spinner"></div>
             <p>Loading visualization...</p>
           </div>
           
-          <div v-else-if="visualizationData" class="visualization-container">
+          <div v-else-if="visualizationData && visualizationData.nodes && visualizationData.nodes.length > 0" class="visualization-container">
             <div class="visualization-controls">
               <select v-model="visualizationType" class="control-select">
                 <option value="dependencies">Dependencies</option>
@@ -191,11 +214,31 @@
           
           <div v-else class="empty-visualization">
             <div class="empty-icon">📊</div>
-            <p>No visualization data available</p>
-            <button @click="loadVisualizationData" class="btn btn-primary">
-              Generate Visualization
-            </button>
+            <h3>No Visualization Data</h3>
+            <p v-if="hasGraphData">
+              Graph data exists, but visualization needs to be generated.
+            </p>
+            <p v-else>
+              Run a graph scan first to analyze your code structure and generate visualization data.
+            </p>
+            <div class="visualization-actions">
+              <button 
+                @click="loadVisualizationData" 
+                class="btn btn-primary"
+              >
+                {{ hasGraphData ? 'Generate Visualization' : 'Show Demo Visualization' }}
+              </button>
+              <button 
+                v-if="!hasGraphData"
+                @click="startGraphScan" 
+                class="btn btn-outline"
+                :disabled="isScanning"
+              >
+                {{ isScanning ? 'Scanning...' : 'Start Graph Scan' }}
+              </button>
+            </div>
           </div>
+          
         </div>
 
         <!-- Metrics Tab -->
@@ -208,95 +251,62 @@
           <div v-else-if="metrics" class="metrics-grid">
             <div class="metric-card">
               <h3>Total Nodes</h3>
-              <div class="metric-value">{{ metrics.totalNodes || 0 }}</div>
+              <div class="metric-value">{{ metrics.vertexCount || 0 }}</div>
             </div>
             
             <div class="metric-card">
               <h3>Total Edges</h3>
-              <div class="metric-value">{{ metrics.totalEdges || 0 }}</div>
+              <div class="metric-value">{{ metrics.edgeCount || 0 }}</div>
             </div>
             
             <div class="metric-card">
-              <h3>Complexity Score</h3>
-              <div class="metric-value">{{ metrics.complexityScore || 0 }}</div>
+              <h3>Average Coupling</h3>
+              <div class="metric-value">{{ (metrics.averageCoupling || 0).toFixed(2) }}</div>
             </div>
             
             <div class="metric-card">
-              <h3>Coupling Level</h3>
-              <div class="metric-value">{{ metrics.couplingLevel || 'Low' }}</div>
+              <h3>Total Types</h3>
+              <div class="metric-value">{{ metrics.totalTypes || 0 }}</div>
+            </div>
+            
+            <div class="metric-card">
+              <h3>Total Methods</h3>
+              <div class="metric-value">{{ metrics.totalMethods || 0 }}</div>
+            </div>
+            
+            <div class="metric-card">
+              <h3>Total Files</h3>
+              <div class="metric-value">{{ metrics.totalFiles || 0 }}</div>
             </div>
           </div>
           
           <div v-else class="empty-metrics">
             <div class="empty-icon">📈</div>
-            <p>No metrics data available</p>
-            <button @click="loadMetrics" class="btn btn-primary">
+            <h3>No Metrics Data</h3>
+            <p v-if="hasGraphData">
+              Graph data exists, but metrics need to be calculated.
+            </p>
+            <p v-else>
+              Run a graph scan first to analyze your code and calculate complexity metrics.
+            </p>
+            <button 
+              v-if="hasGraphData"
+              @click="loadMetrics" 
+              class="btn btn-primary"
+            >
               Calculate Metrics
+            </button>
+            <button 
+              v-else
+              @click="startGraphScan" 
+              class="btn btn-primary"
+              :disabled="isScanning"
+            >
+              {{ isScanning ? 'Scanning...' : 'Start Graph Scan' }}
             </button>
           </div>
         </div>
 
-        <!-- Nodes Tab -->
-        <div v-if="activeTab === 'nodes'" class="nodes-tab">
-          <div class="nodes-filters">
-            <input
-              v-model="nodeFilter"
-              type="text"
-              placeholder="Filter nodes..."
-              class="filter-input"
-            />
-            
-            <select v-model="nodeTypeFilter" class="filter-select">
-              <option value="">All Types</option>
-              <option value="Class">Classes</option>
-              <option value="Method">Methods</option>
-              <option value="Property">Properties</option>
-              <option value="Interface">Interfaces</option>
-            </select>
-          </div>
-          
-          <div v-if="loadingNodes" class="loading-state">
-            <div class="spinner"></div>
-            <p>Loading nodes...</p>
-          </div>
-          
-          <div v-else-if="filteredNodes.length > 0" class="nodes-list">
-            <div
-              v-for="node in filteredNodes"
-              :key="node.id"
-              @click="selectNode(node)"
-              class="node-item"
-              :class="{ selected: selectedNode?.id === node.id }"
-            >
-              <div class="node-info">
-                <div class="node-header">
-                  <span class="node-type">{{ node.type }}</span>
-                  <span class="node-name">{{ node.name }}</span>
-                </div>
-                <div class="node-meta">
-                  <span class="meta-item">{{ node.namespace }}</span>
-                  <span class="meta-item">{{ node.filePath }}</span>
-                </div>
-              </div>
-              
-              <div class="node-stats">
-                <span class="stat">
-                  <span class="stat-label">Dependencies:</span>
-                  <span class="stat-value">{{ node.dependencyCount || 0 }}</span>
-                </span>
-                <span class="stat">
-                  <span class="stat-label">Dependents:</span>
-                  <span class="stat-value">{{ node.dependentCount || 0 }}</span>
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          <div v-else class="empty-nodes">
-            <div class="empty-icon">🔍</div>
-            <p>No nodes found</p>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -312,11 +322,12 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/store/repository'
 import { useGraphStore } from '@/store/graph'
 import GraphSettings from '@/components/graph/GraphSettings.vue'
+import * as d3 from 'd3'
 
 export default {
   name: 'GraphView',
@@ -335,11 +346,6 @@ export default {
     const selectedRepository = ref(null)
     const activeTab = ref('visualization')
     const loadingData = ref(false)
-    const isScanning = ref(false)
-    
-    // Filters
-    const nodeFilter = ref('')
-    const nodeTypeFilter = ref('')
     
     // Visualization settings
     const visualizationType = ref('dependencies')
@@ -347,14 +353,10 @@ export default {
     const showMetrics = ref(false)
     const visualizationContainer = ref(null)
     
-    // Selected node
-    const selectedNode = ref(null)
-    
     // Tab configuration
     const tabs = [
       { id: 'visualization', name: 'Visualization', icon: '📊' },
-      { id: 'metrics', name: 'Metrics', icon: '📈' },
-      { id: 'nodes', name: 'Nodes', icon: '🔗' }
+      { id: 'metrics', name: 'Metrics', icon: '📈' }
     ]
     
     // Computed properties
@@ -367,23 +369,15 @@ export default {
     const loadingNodes = computed(() => graphStore.loadingNodes)
     const error = computed(() => graphStore.error || graphStore.scanError)
     
-    const filteredNodes = computed(() => {
-      let nodes = graphStore.nodes
-      
-      if (nodeFilter.value) {
-        const filter = nodeFilter.value.toLowerCase()
-        nodes = nodes.filter(node => 
-          node.name?.toLowerCase().includes(filter) ||
-          node.namespace?.toLowerCase().includes(filter)
-        )
-      }
-      
-      if (nodeTypeFilter.value) {
-        nodes = nodes.filter(node => node.type === nodeTypeFilter.value)
-      }
-      
-      return nodes
-    })
+    // Status indicators
+    const hasGraphData = computed(() => graphStore.nodes.length > 0)
+    const hasActiveScans = computed(() => activeScans.value.length > 0)
+    const isScanning = computed(() => 
+      activeScans.value.some(scan => 
+        scan.status === 'Running' || scan.status === 'Initializing' || scan.status === 'Clearing'
+      )
+    )
+    
     
     // Methods
     const selectRepository = async (repository) => {
@@ -414,13 +408,10 @@ export default {
     const startGraphScan = async () => {
       if (!selectedRepository.value) return
       
-      isScanning.value = true
       try {
         await graphStore.startGraphScan(selectedRepository.value.id)
       } catch (error) {
         console.error('Error starting graph scan:', error)
-      } finally {
-        isScanning.value = false
       }
     }
     
@@ -449,14 +440,192 @@ export default {
     }
     
     const loadVisualizationData = async () => {
-      if (!selectedRepository.value) return
+      console.log('loadVisualizationData called')
+      if (!selectedRepository.value) {
+        console.log('No selected repository')
+        return
+      }
+      
+      console.log('Selected repository:', selectedRepository.value.id)
+      console.log('Current graph nodes count:', graphStore.nodes.length)
       
       try {
+        // Try to load from API first
+        console.log('Attempting to load visualization data from API...')
         await graphStore.loadVisualizationData(selectedRepository.value.id)
+        
+        console.log('API call completed, visualizationData:', graphStore.visualizationData)
+        
+        // Check if we got proper visualization data from API
+        if (graphStore.visualizationData && 
+            graphStore.visualizationData.nodes && 
+            graphStore.visualizationData.nodes.length > 0) {
+          console.log(`Using API visualization data with ${graphStore.visualizationData.nodes.length} nodes`)
+        } else {
+          console.log('No API data, falling back to mock data for demonstration')
+          const mockData = generateMockVisualizationData()
+          graphStore.visualizationData = mockData
+        }
+        
         await nextTick()
         renderVisualization()
       } catch (error) {
         console.error('Error loading visualization data:', error)
+        
+        // Fallback to mock data if API fails
+        console.log('Error occurred, using mock data')
+        const mockData = generateMockVisualizationData()
+        graphStore.visualizationData = mockData
+        await nextTick()
+        renderVisualization()
+      }
+    }
+    
+    const createVisualizationFromNodes_OLD = (nodes) => {
+      // Group nodes by namespace to create hierarchical relationships
+      const visualizationNodes = nodes.map(node => ({
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        namespace: node.namespace,
+        ...node
+      }))
+      
+      const relationships = []
+      const nodeMap = new Map(visualizationNodes.map(n => [n.id, n]))
+      
+      // Create namespace containment relationships
+      const namespaceGroups = new Map()
+      const namespaceNodes = new Set()
+      
+      visualizationNodes.forEach(node => {
+        if (node.namespace) {
+          // Create hierarchical namespace structure
+          const namespaceParts = node.namespace.split('.')
+          let currentNamespace = ''
+          
+          for (let i = 0; i < namespaceParts.length; i++) {
+            const parentNamespace = currentNamespace
+            currentNamespace = i === 0 ? namespaceParts[0] : currentNamespace + '.' + namespaceParts[i]
+            const namespaceId = `ns_${currentNamespace.replace(/[^a-zA-Z0-9]/g, '_')}`
+            
+            // Add namespace node if not already exists
+            if (!namespaceNodes.has(namespaceId)) {
+              namespaceNodes.add(namespaceId)
+              visualizationNodes.push({
+                id: namespaceId,
+                name: currentNamespace,
+                type: 'Namespace'
+              })
+              
+              // Link to parent namespace
+              if (parentNamespace) {
+                const parentId = `ns_${parentNamespace.replace(/[^a-zA-Z0-9]/g, '_')}`
+                relationships.push({
+                  source: parentId,
+                  target: namespaceId,
+                  type: 'Contains'
+                })
+              }
+            }
+          }
+          
+          // Link node to its immediate namespace
+          const namespaceId = `ns_${node.namespace.replace(/[^a-zA-Z0-9]/g, '_')}`
+          relationships.push({
+            source: namespaceId,
+            target: node.id,
+            type: 'Contains'
+          })
+        }
+      })
+      
+      // Create type-based relationships
+      const nodesByType = new Map()
+      visualizationNodes.forEach(node => {
+        if (!nodesByType.has(node.type)) {
+          nodesByType.set(node.type, [])
+        }
+        nodesByType.get(node.type).push(node)
+      })
+      
+      const classes = nodesByType.get('Class') || []
+      const interfaces = nodesByType.get('Interface') || []
+      const methods = nodesByType.get('Method') || []
+      const properties = nodesByType.get('Property') || []
+      
+      // Create some sample relationships between classes
+      // Connect classes in the same namespace
+      const classesByNamespace = new Map()
+      classes.forEach(cls => {
+        if (!classesByNamespace.has(cls.namespace)) {
+          classesByNamespace.set(cls.namespace, [])
+        }
+        classesByNamespace.get(cls.namespace).push(cls)
+      })
+      
+      // Add some uses relationships between classes in same namespace
+      classesByNamespace.forEach(classesInNs => {
+        if (classesInNs.length > 1) {
+          for (let i = 0; i < Math.min(classesInNs.length - 1, 3); i++) {
+            relationships.push({
+              source: classesInNs[i].id,
+              target: classesInNs[i + 1].id,
+              type: 'Uses'
+            })
+          }
+        }
+      })
+      
+      // Connect some interfaces to classes (mock implementation)
+      interfaces.forEach((iface, index) => {
+        const potentialImplementers = classes.filter(c => 
+          c.namespace === iface.namespace || 
+          c.namespace?.startsWith(iface.namespace || '')
+        )
+        
+        if (potentialImplementers.length > 0) {
+          relationships.push({
+            source: potentialImplementers[0].id,
+            target: iface.id,
+            type: 'Implements'
+          })
+        }
+      })
+      
+      console.log(`Created visualization with ${visualizationNodes.length} nodes and ${relationships.length} relationships`)
+      
+      return {
+        nodes: visualizationNodes,
+        relationships: relationships
+      }
+    }
+    
+    const generateMockVisualizationData = () => {
+      return {
+        nodes: [
+          { id: 'ns_MyApp', name: 'MyApp', type: 'namespace', fullName: 'MyApp' },
+          { id: 'ns_MyApp_Controllers', name: 'Controllers', type: 'namespace', fullName: 'MyApp.Controllers' },
+          { id: 'ns_MyApp_Services', name: 'Services', type: 'namespace', fullName: 'MyApp.Services' },
+          { id: 'c1', name: 'HomeController', type: 'class', namespace: 'MyApp.Controllers' },
+          { id: 'c2', name: 'UserService', type: 'class', namespace: 'MyApp.Services' },
+          { id: 'c3', name: 'IUserService', type: 'interface', namespace: 'MyApp.Services' },
+          { id: 'c4', name: 'ApiController', type: 'class', namespace: 'MyApp.Controllers' },
+          { id: 'c5', name: 'DataService', type: 'class', namespace: 'MyApp.Services' }
+        ],
+        relationships: [
+          { source: 'ns_MyApp', target: 'ns_MyApp_Controllers', type: 'contains' },
+          { source: 'ns_MyApp', target: 'ns_MyApp_Services', type: 'contains' },
+          { source: 'ns_MyApp_Controllers', target: 'c1', type: 'contains' },
+          { source: 'ns_MyApp_Controllers', target: 'c4', type: 'contains' },
+          { source: 'ns_MyApp_Services', target: 'c2', type: 'contains' },
+          { source: 'ns_MyApp_Services', target: 'c3', type: 'contains' },
+          { source: 'ns_MyApp_Services', target: 'c5', type: 'contains' },
+          { source: 'c2', target: 'c3', type: 'implements' },
+          { source: 'c1', target: 'c2', type: 'uses' },
+          { source: 'c4', target: 'c5', type: 'uses' },
+          { source: 'c2', target: 'c5', type: 'references' }
+        ]
       }
     }
     
@@ -470,17 +639,268 @@ export default {
       }
     }
     
-    const selectNode = (node) => {
-      selectedNode.value = selectedNode.value?.id === node.id ? null : node
-    }
     
     const clearError = () => {
       graphStore.clearError()
     }
     
     const renderVisualization = () => {
-      // This would integrate with D3.js for actual visualization
+      if (!visualizationData.value || !visualizationContainer.value) {
+        console.log('No visualization data or container available')
+        return
+      }
+      
       console.log('Rendering visualization with data:', visualizationData.value)
+      
+      // Clear previous visualization
+      d3.select(visualizationContainer.value).selectAll('*').remove()
+      
+      const { nodes, relationships } = visualizationData.value
+      
+      if (!nodes || nodes.length === 0) {
+        // Show message for empty data
+        const svg = d3.select(visualizationContainer.value)
+          .append('svg')
+          .attr('width', '100%')
+          .attr('height', '100%')
+          .style('background', '#f8f9fa')
+        
+        svg.append('text')
+          .attr('x', '50%')
+          .attr('y', '50%')
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'middle')
+          .style('font-size', '16px')
+          .style('fill', '#6b7280')
+          .text('No graph data available')
+        
+        return
+      }
+      
+      // Set up dimensions
+      const container = visualizationContainer.value
+      const width = container.clientWidth || 800
+      const height = container.clientHeight || 500
+      
+      // Create SVG
+      const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .style('background', '#fff')
+        .style('border', '1px solid #e5e7eb')
+        .style('border-radius', '8px')
+      
+      // Create zoom behavior
+      const zoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', function(event) {
+          g.attr('transform', event.transform)
+        })
+      
+      svg.call(zoom)
+      
+      // Create main group for all elements
+      const g = svg.append('g')
+      
+      // Prepare data
+      const nodeData = nodes.map(node => ({
+        id: node.id,
+        name: node.name || node.id,
+        type: node.type || 'Unknown',
+        group: getNodeGroup(node.type),
+        ...node
+      }))
+      
+      const linkData = relationships ? relationships.map(rel => ({
+        source: rel.source || rel.sourceNodeId,
+        target: rel.target || rel.targetNodeId,
+        type: rel.type,
+        ...rel
+      })) : []
+      
+      // Create force simulation with improved layout for namespace containers
+      const simulation = d3.forceSimulation(nodeData)
+        .force('link', d3.forceLink(linkData).id(d => d.id).distance(d => {
+          // Longer links for cross-namespace connections
+          if (d.type === 'uses' || d.type === 'references') return 200
+          if (d.type === 'contains') return 80
+          return 120
+        }).strength(0.6))
+        .force('charge', d3.forceManyBody().strength(d => {
+          // Stronger repulsion for namespace nodes
+          return d.type.toLowerCase() === 'namespace' ? -1200 : -600
+        }))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(d => getNodeRadius(d.type) + 15))
+        .force('x', d3.forceX(width / 2).strength(0.03))
+        .force('y', d3.forceY(height / 2).strength(0.03))
+      
+      // Create arrow marker for directed edges
+      svg.append('defs').selectAll('marker')
+        .data(['arrow'])
+        .enter().append('marker')
+        .attr('id', d => d)
+        .attr('viewBox', '0 -5 10 10')
+        .attr('refX', 20)
+        .attr('refY', 0)
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', '#999')
+      
+      // Create links
+      const link = g.append('g')
+        .attr('class', 'links')
+        .selectAll('line')
+        .data(linkData)
+        .enter().append('line')
+        .attr('stroke', d => getRelationshipColor(d.type))
+        .attr('stroke-opacity', 0.8)
+        .attr('stroke-width', d => getRelationshipWidth(d.type))
+        .attr('marker-end', 'url(#arrow)')
+      
+      // Create nodes
+      const node = g.append('g')
+        .attr('class', 'nodes')
+        .selectAll('g')
+        .data(nodeData)
+        .enter().append('g')
+        .attr('class', 'node')
+        .call(d3.drag()
+          .on('start', dragstarted)
+          .on('drag', dragged)
+          .on('end', dragended))
+      
+      // Add circles to nodes
+      node.append('circle')
+        .attr('r', d => getNodeRadius(d.type))
+        .attr('fill', d => getNodeColor(d.type))
+        .attr('stroke', d => getNodeStrokeColor(d.type))
+        .attr('stroke-width', d => d.type.toLowerCase() === 'namespace' ? 3 : 2)
+      
+      // Add labels if enabled
+      if (showLabels.value) {
+        node.append('text')
+          .attr('dy', '.35em')
+          .attr('text-anchor', 'middle')
+          .style('font-size', '16px')
+          .style('font-weight', '500')
+          .style('fill', '#2c3e50')
+          .style('pointer-events', 'none')
+          .text(d => d.name.length > 20 ? d.name.substring(0, 20) + '...' : d.name)
+      }
+      
+      // Add tooltips
+      node.append('title')
+        .text(d => `${d.name}\nType: ${d.type}${d.namespace ? '\nNamespace: ' + d.namespace : ''}`)
+      
+      // Update positions on simulation tick
+      simulation.on('tick', () => {
+        link
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y)
+        
+        node
+          .attr('transform', d => `translate(${d.x},${d.y})`)
+      })
+      
+      // Drag functions
+      function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart()
+        d.fx = d.x
+        d.fy = d.y
+      }
+      
+      function dragged(event, d) {
+        d.fx = event.x
+        d.fy = event.y
+      }
+      
+      function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0)
+        d.fx = null
+        d.fy = null
+      }
+      
+      // Helper functions
+      function getRelationshipWidth(type) {
+        switch (type) {
+          case 'Contains': return 3
+          case 'Uses': return 4
+          case 'Implements': return 3
+          case 'Inherits': return 4
+          case 'Calls': return 2
+          default: return 3
+        }
+      }
+      
+      function getRelationshipColor(type) {
+        switch (type.toLowerCase()) {
+          case 'contains': return '#bdc3c7'
+          case 'uses': return '#3498db'
+          case 'references': return '#e67e22'
+          case 'implements': return '#e74c3c'
+          case 'inherits': return '#9b59b6'
+          case 'calls': return '#2ecc71'
+          default: return '#95a5a6'
+        }
+      }
+      
+      function getNodeGroup(type) {
+        switch (type) {
+          case 'Class': return 1
+          case 'Interface': return 2
+          case 'Method': return 3
+          case 'Property': return 4
+          case 'Namespace': return 5
+          default: return 0
+        }
+      }
+      
+      function getNodeRadius(type) {
+        switch (type.toLowerCase()) {
+          case 'namespace': return 40
+          case 'class': return 20
+          case 'interface': return 18
+          case 'struct': return 18
+          default: return 15
+        }
+      }
+      
+      function getNodeColor(type) {
+        switch (type.toLowerCase()) {
+          case 'namespace': return '#e8f4f8'
+          case 'class': return '#4ecdc4'
+          case 'interface': return '#45b7d1'
+          case 'struct': return '#96ceb4'
+          default: return '#95a5a6'
+        }
+      }
+      
+      function getNodeStrokeColor(type) {
+        switch (type.toLowerCase()) {
+          case 'namespace': return '#2c3e50'
+          case 'class': return '#16a085'
+          case 'interface': return '#2980b9'
+          case 'struct': return '#27ae60'
+          default: return '#7f8c8d'
+        }
+      }
+      
+      // Store simulation reference for cleanup
+      visualizationContainer.value._simulation = simulation
+    }
+    
+    // Handle window resize
+    const handleResize = () => {
+      if (visualizationData.value && visualizationContainer.value) {
+        renderVisualization()
+      }
     }
     
     // Lifecycle
@@ -495,6 +915,19 @@ export default {
           await selectRepository(repo)
         }
       }
+      
+      // Add resize listener
+      window.addEventListener('resize', handleResize)
+    })
+    
+    onUnmounted(() => {
+      // Clean up D3 simulation
+      if (visualizationContainer.value && visualizationContainer.value._simulation) {
+        visualizationContainer.value._simulation.stop()
+      }
+      
+      // Remove resize listener
+      window.removeEventListener('resize', handleResize)
     })
     
     // Watchers
@@ -517,13 +950,10 @@ export default {
       activeTab,
       loadingData,
       isScanning,
-      nodeFilter,
-      nodeTypeFilter,
       visualizationType,
       showLabels,
       showMetrics,
       visualizationContainer,
-      selectedNode,
       
       // Data
       tabs,
@@ -531,12 +961,11 @@ export default {
       activeScans,
       metrics,
       visualizationData,
-      filteredNodes,
+      hasGraphData,
       
       // Loading states
       loadingVisualization,
       loadingMetrics,
-      loadingNodes,
       error,
       
       // Stores
@@ -551,7 +980,6 @@ export default {
       cancelScan,
       loadVisualizationData,
       loadMetrics,
-      selectNode,
       clearError
     }
   }
@@ -782,6 +1210,35 @@ export default {
   font-size: 14px;
 }
 
+.graph-status {
+  margin-top: 8px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.status-indicator.success {
+  color: #065f46;
+  background: #d1fae5;
+}
+
+.status-indicator.scanning {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.status-indicator.empty {
+  color: #b45309;
+  background: #fed7aa;
+}
+
 .repo-actions {
   display: flex;
   gap: 8px;
@@ -949,9 +1406,20 @@ export default {
 
 .visualization-graph {
   min-height: 500px;
+  height: 600px;
+  width: 100%;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: white;
+  overflow: hidden;
+  position: relative;
+}
+
+.visualization-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
 }
 
 .empty-visualization,

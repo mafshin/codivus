@@ -92,6 +92,11 @@ public enum ScanStatus
     Initializing,
     
     /// <summary>
+    /// Scan is clearing existing data
+    /// </summary>
+    Clearing,
+    
+    /// <summary>
     /// Scan is in progress
     /// </summary>
     InProgress,

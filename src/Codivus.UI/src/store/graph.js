@@ -8,15 +8,15 @@ export const useGraphStore = defineStore({
     // Graph settings
     settings: {
       enabled: true,
-      janusGraph: {
-        host: 'localhost',
-        port: 8182,
-        username: '',
-        password: '',
-        connectionPoolSize: 10,
-        connectionTimeout: 30000,
-        enableSsl: false,
-        graphName: 'codivus'
+      neo4j: {
+        uri: 'bolt://localhost:7687',
+        username: 'neo4j',
+        password: 'pass12345678',
+        database: 'neo4j',
+        maxConnectionPoolSize: 50,
+        connectionTimeout: 30,
+        enableEncryption: false,
+        trustStrategy: 'TrustAllCertificates'
       },
       processing: {
         maxConcurrentFiles: 50,
@@ -50,7 +50,11 @@ export const useGraphStore = defineStore({
     
     // Error states
     error: null,
-    scanError: null
+    scanError: null,
+    
+    // Polling state
+    pollingIntervals: new Map(),
+    pollingEnabled: true
   }),
   
   getters: {
@@ -69,9 +73,8 @@ export const useGraphStore = defineStore({
     hasGraphData: (state) => state.nodes.length > 0,
     
     connectionString: (state) => {
-      const { host, port, enableSsl } = state.settings.janusGraph
-      const protocol = enableSsl ? 'wss' : 'ws'
-      return `${protocol}://${host}:${port}/gremlin`
+      const { uri } = state.settings.neo4j
+      return uri
     }
   },
   
@@ -118,12 +121,24 @@ export const useGraphStore = defineStore({
       
       try {
         const response = await api.startGraphScan(repositoryId, configuration)
-        const scan = response.data
+        const scan = {
+          ...response.data,
+          repositoryId,
+          status: 'Running',
+          progress: 0,
+          createdAt: new Date().toISOString(),
+          totalTasks: 0,
+          completedTasks: 0,
+          failedTasks: 0
+        }
         
-        this.activeScans.set(scan.id, scan)
+        this.activeScans.set(scan.scanId || scan.id, scan)
         this.scanHistory.unshift(scan)
         
-        console.log('Graph scan started:', scan.id)
+        // Start polling for this scan
+        this.startPolling(scan.scanId || scan.id)
+        
+        console.log('Graph scan started:', scan.scanId || scan.id)
         return scan
       } catch (error) {
         this.scanError = error.message || 'Failed to start graph scan'
@@ -139,8 +154,27 @@ export const useGraphStore = defineStore({
         const response = await api.getGraphScanStatus(scanId)
         const scanStatus = response.data
         
+        // Calculate progress percentage
+        if (scanStatus.totalTasks > 0) {
+          scanStatus.progress = Math.round((scanStatus.completedTasks / scanStatus.totalTasks) * 100)
+        } else {
+          scanStatus.progress = 0
+        }
+        
         if (this.activeScans.has(scanId)) {
-          this.activeScans.set(scanId, { ...this.activeScans.get(scanId), ...scanStatus })
+          const existingScan = this.activeScans.get(scanId)
+          const updatedScan = { ...existingScan, ...scanStatus }
+          this.activeScans.set(scanId, updatedScan)
+          
+          // Check if scan is complete
+          if (scanStatus.status === 'Completed' || scanStatus.status === 'Failed') {
+            this.stopPolling(scanId)
+            
+            // If completed successfully, refresh graph data
+            if (scanStatus.status === 'Completed' && existingScan.repositoryId) {
+              this.refreshGraphData(existingScan.repositoryId)
+            }
+          }
         }
         
         return scanStatus
@@ -258,16 +292,20 @@ export const useGraphStore = defineStore({
     },
     
     async loadVisualizationData(repositoryId) {
+      console.log('Store: loadVisualizationData called with repositoryId:', repositoryId)
       this.loadingVisualization = true
       this.error = null
       
       try {
+        console.log('Store: Making API call to getGraphVisualization')
         const response = await api.getGraphVisualization(repositoryId)
+        console.log('Store: API response received:', response)
         this.visualizationData = response.data
+        console.log('Store: Visualization data set:', this.visualizationData)
         return this.visualizationData
       } catch (error) {
         this.error = error.message || 'Failed to load visualization data'
-        console.error('Error loading visualization data:', error)
+        console.error('Store: Error loading visualization data:', error)
         throw error
       } finally {
         this.loadingVisualization = false
@@ -312,6 +350,60 @@ export const useGraphStore = defineStore({
       if (scan) {
         scan.progress = progress
         this.activeScans.set(scanId, scan)
+      }
+    },
+    
+    // Polling methods
+    startPolling(scanId, interval = 2000) {
+      if (!this.pollingEnabled || this.pollingIntervals.has(scanId)) {
+        return
+      }
+      
+      const intervalId = setInterval(async () => {
+        try {
+          await this.getScanStatus(scanId)
+        } catch (error) {
+          console.error('Error during polling:', error)
+          this.stopPolling(scanId)
+        }
+      }, interval)
+      
+      this.pollingIntervals.set(scanId, intervalId)
+      console.log('Started polling for scan:', scanId)
+    },
+    
+    stopPolling(scanId) {
+      const intervalId = this.pollingIntervals.get(scanId)
+      if (intervalId) {
+        clearInterval(intervalId)
+        this.pollingIntervals.delete(scanId)
+        console.log('Stopped polling for scan:', scanId)
+      }
+    },
+    
+    stopAllPolling() {
+      this.pollingIntervals.forEach((intervalId, scanId) => {
+        clearInterval(intervalId)
+        console.log('Stopped polling for scan:', scanId)
+      })
+      this.pollingIntervals.clear()
+    },
+    
+    // Data refresh after scan completion
+    async refreshGraphData(repositoryId) {
+      try {
+        console.log('Refreshing graph data for repository:', repositoryId)
+        
+        // Refresh all graph data
+        await Promise.all([
+          this.loadNodes(repositoryId),
+          this.loadGraphMetrics(repositoryId),
+          this.loadVisualizationData(repositoryId)
+        ])
+        
+        console.log('Graph data refreshed successfully')
+      } catch (error) {
+        console.error('Error refreshing graph data:', error)
       }
     }
   }

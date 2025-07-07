@@ -15,8 +15,9 @@ namespace Codivus.Graph.Interfaces
         // Node operations
         Task<CodeNode> CreateNodeAsync(CodeNode node, CancellationToken cancellationToken = default);
         Task<CodeNode> UpdateNodeAsync(CodeNode node, CancellationToken cancellationToken = default);
-        Task<CodeNode> GetNodeAsync(string nodeId, CancellationToken cancellationToken = default);
+        Task<CodeNode?> GetNodeAsync(string nodeId, CancellationToken cancellationToken = default);
         Task<IEnumerable<CodeNode>> GetNodesByTypeAsync(string repositoryId, NodeType nodeType, CancellationToken cancellationToken = default);
+        Task<IEnumerable<CodeNode>> GetAllNodesAsync(string repositoryId, CancellationToken cancellationToken = default);
         Task<bool> DeleteNodeAsync(string nodeId, CancellationToken cancellationToken = default);
         Task<bool> NodeExistsAsync(string nodeId, CancellationToken cancellationToken = default);
         

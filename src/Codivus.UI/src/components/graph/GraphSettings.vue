@@ -27,31 +27,29 @@
       </div>
 
       <div v-if="localSettings.enabled" class="settings-content">
-        <!-- JanusGraph Connection Settings -->
+        <!-- Neo4j Connection Settings -->
         <div class="form-section">
-          <h3>JanusGraph Connection</h3>
+          <h3>Neo4j Connection</h3>
           
           <div class="form-row">
             <div class="form-group">
-              <label for="host">Host</label>
+              <label for="uri">Connection URI</label>
               <input
-                id="host"
+                id="uri"
                 type="text"
-                v-model="localSettings.janusGraph.host"
-                placeholder="localhost"
+                v-model="localSettings.neo4j.uri"
+                placeholder="bolt://localhost:7687"
                 required
               />
             </div>
             
             <div class="form-group">
-              <label for="port">Port</label>
+              <label for="database">Database</label>
               <input
-                id="port"
-                type="number"
-                v-model.number="localSettings.janusGraph.port"
-                placeholder="8182"
-                min="1"
-                max="65535"
+                id="database"
+                type="text"
+                v-model="localSettings.neo4j.database"
+                placeholder="codivus"
                 required
               />
             </div>
@@ -63,8 +61,8 @@
               <input
                 id="username"
                 type="text"
-                v-model="localSettings.janusGraph.username"
-                placeholder="Optional"
+                v-model="localSettings.neo4j.username"
+                placeholder="neo4j"
               />
             </div>
             
@@ -73,57 +71,58 @@
               <input
                 id="password"
                 type="password"
-                v-model="localSettings.janusGraph.password"
-                placeholder="Optional"
+                v-model="localSettings.neo4j.password"
+                placeholder="password"
               />
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label for="connectionPoolSize">Connection Pool Size</label>
+              <label for="maxConnectionPoolSize">Max Connection Pool Size</label>
               <input
-                id="connectionPoolSize"
+                id="maxConnectionPoolSize"
                 type="number"
-                v-model.number="localSettings.janusGraph.connectionPoolSize"
+                v-model.number="localSettings.neo4j.maxConnectionPoolSize"
                 min="1"
-                max="100"
+                max="200"
               />
             </div>
             
             <div class="form-group">
-              <label for="connectionTimeout">Connection Timeout (ms)</label>
+              <label for="connectionTimeout">Connection Timeout (seconds)</label>
               <input
                 id="connectionTimeout"
                 type="number"
-                v-model.number="localSettings.janusGraph.connectionTimeout"
-                min="1000"
-                step="1000"
+                v-model.number="localSettings.neo4j.connectionTimeout"
+                min="1"
+                max="300"
               />
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label for="graphName">Graph Name</label>
-              <input
-                id="graphName"
-                type="text"
-                v-model="localSettings.janusGraph.graphName"
-                placeholder="codivus"
+              <label for="trustStrategy">Trust Strategy</label>
+              <select
+                id="trustStrategy"
+                v-model="localSettings.neo4j.trustStrategy"
                 required
-              />
+              >
+                <option value="TrustAllCertificates">Trust All Certificates</option>
+                <option value="TrustSystemCaSignedCertificates">Trust System CA Signed Certificates</option>
+              </select>
             </div>
             
             <div class="form-group">
               <label class="toggle-label">
                 <input
                   type="checkbox"
-                  v-model="localSettings.janusGraph.enableSsl"
+                  v-model="localSettings.neo4j.enableEncryption"
                   class="toggle-input"
                 />
                 <span class="toggle-slider small"></span>
-                Enable SSL
+                Enable Encryption
               </label>
             </div>
           </div>
@@ -336,15 +335,15 @@ export default {
     
     const localSettings = reactive({
       enabled: true,
-      janusGraph: {
-        host: 'localhost',
-        port: 8182,
-        username: '',
-        password: '',
-        connectionPoolSize: 10,
-        connectionTimeout: 30000,
-        enableSsl: false,
-        graphName: 'codivus'
+      neo4j: {
+        uri: 'bolt://localhost:7687',
+        username: 'neo4j',
+        password: 'password',
+        database: 'codivus',
+        maxConnectionPoolSize: 50,
+        connectionTimeout: 30,
+        enableEncryption: false,
+        trustStrategy: 'TrustAllCertificates'
       },
       processing: {
         maxConcurrentFiles: 50,
@@ -404,15 +403,15 @@ export default {
     const resetSettings = () => {
       Object.assign(localSettings, {
         enabled: true,
-        janusGraph: {
-          host: 'localhost',
-          port: 8182,
-          username: '',
-          password: '',
-          connectionPoolSize: 10,
-          connectionTimeout: 30000,
-          enableSsl: false,
-          graphName: 'codivus'
+        neo4j: {
+          uri: 'bolt://localhost:7687',
+          username: 'neo4j',
+          password: 'password',
+          database: 'codivus',
+          maxConnectionPoolSize: 50,
+          connectionTimeout: 30,
+          enableEncryption: false,
+          trustStrategy: 'TrustAllCertificates'
         },
         processing: {
           maxConcurrentFiles: 50,
@@ -439,12 +438,12 @@ export default {
         
         connectionStatus.value = {
           type: 'success',
-          message: `Successfully connected to JanusGraph at ${localSettings.janusGraph.host}:${localSettings.janusGraph.port}`
+          message: `Successfully connected to Neo4j at ${localSettings.neo4j.uri}`
         }
       } catch (error) {
         connectionStatus.value = {
           type: 'error',
-          message: error.message || 'Failed to connect to JanusGraph'
+          message: error.message || 'Failed to connect to Neo4j'
         }
       } finally {
         testingConnection.value = false
@@ -580,15 +579,18 @@ export default {
 
 .form-group input[type="text"],
 .form-group input[type="number"],
-.form-group input[type="password"] {
+.form-group input[type="password"],
+.form-group select {
   padding: 8px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 14px;
   transition: border-color 0.2s;
+  background: white;
 }
 
-.form-group input:focus {
+.form-group input:focus,
+.form-group select:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);

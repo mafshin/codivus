@@ -2,6 +2,8 @@ using System.Diagnostics;
 using Codivus.CLI.Infrastructure;
 using Codivus.CLI.Models;
 using Microsoft.Extensions.Logging;
+using Neo4j.Driver;
+using Codivus.Graph.Configuration;
 
 namespace Codivus.CLI.Services;
 
@@ -212,8 +214,8 @@ public class StatusCommandService
         // Check memory usage
         health.MemoryUsage = await GetMemoryUsageAsync();
 
-        // Check JanusGraph connectivity (if configured)
-        health.Services["JanusGraph"] = await CheckJanusGraphHealthAsync();
+        // Check Neo4j connectivity (if configured)
+        health.Services["Neo4j"] = await CheckNeo4jHealthAsync();
 
         // Check LLM provider connectivity (if configured)
         health.Services["LLM"] = await CheckLLMProviderHealthAsync();
@@ -365,18 +367,77 @@ public class StatusCommandService
         };
     }
 
-    private async Task<ServiceHealth> CheckJanusGraphHealthAsync()
+    private async Task<ServiceHealth> CheckNeo4jHealthAsync()
     {
-        // Implementation would check JanusGraph connectivity
-        await Task.Delay(100);
+        var stopwatch = Stopwatch.StartNew();
         
-        return new ServiceHealth
+        try
         {
-            Name = "JanusGraph",
-            Status = "healthy",
-            ResponseTime = TimeSpan.FromMilliseconds(50),
-            LastChecked = DateTime.UtcNow
-        };
+            var config = await _configurationService.GetConfigurationAsync<GraphConfiguration>("graph");
+            if (config == null || !config.Enabled)
+            {
+                return new ServiceHealth
+                {
+                    Name = "Neo4j",
+                    Status = "disabled",
+                    ResponseTime = TimeSpan.Zero,
+                    LastChecked = DateTime.UtcNow,
+                    Error = "Graph storage is disabled in configuration"
+                };
+            }
+
+            var settings = config.Neo4j;
+            using var driver = GraphDatabase.Driver(
+                settings.Uri,
+                AuthTokens.Basic(settings.Username, settings.Password),
+                configBuilder => configBuilder
+                    .WithConnectionTimeout(TimeSpan.FromSeconds(5))
+                    .WithEncryptionLevel(settings.EnableEncryption ? EncryptionLevel.Encrypted : EncryptionLevel.None)
+            );
+
+            await using var session = driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+            var result = await session.RunAsync("RETURN 1 as health");
+            var record = await result.SingleAsync();
+            
+            stopwatch.Stop();
+            
+            var healthValue = record["health"].As<int>();
+            if (healthValue == 1)
+            {
+                return new ServiceHealth
+                {
+                    Name = "Neo4j",
+                    Status = "healthy",
+                    ResponseTime = stopwatch.Elapsed,
+                    LastChecked = DateTime.UtcNow
+                };
+            }
+            else
+            {
+                return new ServiceHealth
+                {
+                    Name = "Neo4j",
+                    Status = "unhealthy",
+                    ResponseTime = stopwatch.Elapsed,
+                    LastChecked = DateTime.UtcNow,
+                    Error = "Health check query returned unexpected result"
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _logger.LogError(ex, "Neo4j health check failed");
+            
+            return new ServiceHealth
+            {
+                Name = "Neo4j",
+                Status = "unhealthy",
+                ResponseTime = stopwatch.Elapsed,
+                LastChecked = DateTime.UtcNow,
+                Error = $"Connection failed: {ex.Message}"
+            };
+        }
     }
 
     private async Task<ServiceHealth> CheckLLMProviderHealthAsync()

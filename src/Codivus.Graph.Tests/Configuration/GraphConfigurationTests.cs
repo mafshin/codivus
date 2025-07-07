@@ -1,3 +1,4 @@
+using System;
 using Xunit;
 using FluentAssertions;
 using Codivus.Graph.Configuration;
@@ -14,7 +15,7 @@ namespace Codivus.Graph.Tests.Configuration
 
             // Assert
             config.Should().NotBeNull();
-            config.JanusGraph.Should().NotBeNull();
+            config.Neo4j.Should().NotBeNull();
             config.Processing.Should().NotBeNull();
             config.Analysis.Should().NotBeNull();
         }
@@ -26,43 +27,46 @@ namespace Codivus.Graph.Tests.Configuration
             var config = new GraphConfiguration
             {
                 Enabled = true,
-                JanusGraph = new JanusGraphSettings
+                Neo4j = new Neo4jSettings
                 {
-                    Host = "test-host",
-                    Port = 9999,
-                    ConnectionPoolSize = 20,
+                    Uri = "bolt://test-host:7687",
+                    MaxConnectionPoolSize = 20,
                     Username = "testuser",
                     Password = "testpass",
-                    EnableSsl = true,
-                    ConnectionTimeout = 5000
+                    Database = "testdb",
+                    EnableEncryption = true,
+                    ConnectionTimeout = TimeSpan.FromSeconds(5),
+                    TrustStrategy = "TrustSystemCaSignedCertificates"
                 }
             };
 
             // Assert
             config.Enabled.Should().BeTrue();
-            config.JanusGraph.Host.Should().Be("test-host");
-            config.JanusGraph.Port.Should().Be(9999);
-            config.JanusGraph.ConnectionPoolSize.Should().Be(20);
-            config.JanusGraph.Username.Should().Be("testuser");
-            config.JanusGraph.Password.Should().Be("testpass");
-            config.JanusGraph.EnableSsl.Should().BeTrue();
-            config.JanusGraph.ConnectionTimeout.Should().Be(5000);
+            config.Neo4j.Uri.Should().Be("bolt://test-host:7687");
+            config.Neo4j.MaxConnectionPoolSize.Should().Be(20);
+            config.Neo4j.Username.Should().Be("testuser");
+            config.Neo4j.Password.Should().Be("testpass");
+            config.Neo4j.Database.Should().Be("testdb");
+            config.Neo4j.EnableEncryption.Should().BeTrue();
+            config.Neo4j.ConnectionTimeout.Should().Be(TimeSpan.FromSeconds(5));
+            config.Neo4j.TrustStrategy.Should().Be("TrustSystemCaSignedCertificates");
         }
 
         [Fact]
-        public void JanusGraphSettings_DefaultConstructor_ShouldInitializeDefaults()
+        public void Neo4jSettings_DefaultConstructor_ShouldInitializeDefaults()
         {
             // Act
-            var settings = new JanusGraphSettings();
+            var settings = new Neo4jSettings();
 
             // Assert
-            settings.Host.Should().Be("localhost");
-            settings.Port.Should().Be(8182);
-            settings.ConnectionPoolSize.Should().Be(10);
-            settings.Username.Should().BeEmpty();
-            settings.Password.Should().BeEmpty();
-            settings.EnableSsl.Should().BeFalse();
-            settings.ConnectionTimeout.Should().Be(30000);
+            settings.Uri.Should().Be("bolt://localhost:7687");
+            settings.Username.Should().Be("neo4j");
+            settings.Password.Should().Be("pass12345678");
+            settings.Database.Should().Be("neo4j");
+            settings.MaxConnectionPoolSize.Should().Be(50);
+            settings.EnableEncryption.Should().BeFalse();
+            settings.ConnectionTimeout.Should().Be(TimeSpan.FromSeconds(30));
+            settings.TrustStrategy.Should().Be("TrustAllCertificates");
         }
 
         [Fact]

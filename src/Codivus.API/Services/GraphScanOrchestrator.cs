@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Codivus.API.Interfaces;
 using Codivus.Core.Interfaces;
 using Codivus.Core.Models;
+using Codivus.Graph.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Codivus.API.Services
@@ -15,6 +16,7 @@ namespace Codivus.API.Services
     {
         private readonly ITaskQueue<GraphScanTask> _taskQueue;
         private readonly IRepositoryService _repositoryService;
+        private readonly IGraphStorageService _graphStorageService;
         private readonly ILogger<GraphScanOrchestrator> _logger;
         private readonly Dictionary<string, GraphScanProgress> _scanProgress = new();
         private readonly SemaphoreSlim _progressLock = new(1, 1);
@@ -22,10 +24,12 @@ namespace Codivus.API.Services
         public GraphScanOrchestrator(
             ITaskQueue<GraphScanTask> taskQueue,
             IRepositoryService repositoryService,
+            IGraphStorageService graphStorageService,
             ILogger<GraphScanOrchestrator> logger)
         {
             _taskQueue = taskQueue;
             _repositoryService = repositoryService;
+            _graphStorageService = graphStorageService;
             _logger = logger;
         }
 
@@ -65,6 +69,30 @@ namespace Codivus.API.Services
             finally
             {
                 _progressLock.Release();
+            }
+
+            // Clear existing graph data for Full scans
+            if (configuration.Mode == ScanMode.Full)
+            {
+                try
+                {
+                    _logger.LogInformation("Clearing existing graph data for repository {RepositoryId} before full scan", repositoryId);
+                    progress.Status = ScanStatus.Clearing;
+                    
+                    var cleared = await _graphStorageService.ClearGraphAsync(repositoryId);
+                    if (cleared)
+                    {
+                        _logger.LogInformation("Successfully cleared graph data for repository {RepositoryId}", repositoryId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Graph clearing returned false for repository {RepositoryId}, continuing with scan", repositoryId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to clear graph data for repository {RepositoryId}. Scan will continue but may have duplicate data.", repositoryId);
+                }
             }
 
             // Create scan tasks based on configuration

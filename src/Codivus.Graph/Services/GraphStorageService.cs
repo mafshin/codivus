@@ -3,17 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Gremlin.Net.Driver;
-using Gremlin.Net.Driver.Remote;
-using Gremlin.Net.Process.Traversal;
-using Gremlin.Net.Structure;
-using Gremlin.Net.Structure.IO.GraphSON;
-using static Gremlin.Net.Process.Traversal.AnonymousTraversalSource;
-using static Gremlin.Net.Process.Traversal.__;
+using Neo4j.Driver;
 using Codivus.Graph.Configuration;
 using Codivus.Graph.Interfaces;
 using Codivus.Graph.Models;
-using Codivus.Graph.Serializers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -23,9 +16,7 @@ namespace Codivus.Graph.Services
     {
         private readonly GraphConfiguration _configuration;
         private readonly ILogger<GraphStorageService> _logger;
-        private GremlinClient? _client;
-        private DriverRemoteConnection? _remoteConnection;
-        private GraphTraversalSource? _g;
+        private IDriver? _driver;
         private readonly SemaphoreSlim _connectionLock = new(1, 1);
         private bool _disposed;
 
@@ -40,42 +31,33 @@ namespace Codivus.Graph.Services
             await _connectionLock.WaitAsync(cancellationToken);
             try
             {
-                if (_client != null)
+                if (_driver != null)
                     return true;
 
-                var settings = _configuration.JanusGraph;
-                var server = new GremlinServer(settings.Host, settings.Port, settings.EnableSsl);
-
-                var connectionPoolSettings = new ConnectionPoolSettings
-                {
-                    MaxInProcessPerConnection = 32,
-                    PoolSize = settings.ConnectionPoolSize,
-                    ReconnectionAttempts = 3,
-                    ReconnectionBaseDelay = TimeSpan.FromSeconds(1)
-                };
-
-                // Use GraphSON serialization with custom JanusGraph deserializers
-                var messageSerializer = JanusGraphGraphSON3MessageSerializerFactory.Create();
-
-                _client = new GremlinClient(server, 
-                    messageSerializer: messageSerializer,
-                    connectionPoolSettings: connectionPoolSettings);
-
-                _remoteConnection = new DriverRemoteConnection(_client, "g");
-                _g = Traversal().WithRemote(_remoteConnection);
+                var settings = _configuration.Neo4j;
+                
+                _driver = GraphDatabase.Driver(
+                    settings.Uri,
+                    AuthTokens.Basic(settings.Username, settings.Password),
+                    configBuilder => configBuilder
+                        .WithMaxConnectionPoolSize(settings.MaxConnectionPoolSize)
+                        .WithConnectionAcquisitionTimeout(settings.ConnectionAcquisitionTimeout)
+                        .WithConnectionTimeout(settings.ConnectionTimeout)
+                        .WithEncryptionLevel(settings.EnableEncryption ? EncryptionLevel.Encrypted : EncryptionLevel.None)
+                );
 
                 // Test connection
                 try
                 {
-                    await _g.V().Limit<Vertex>(1).Promise(t => t.Next());
+                    await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+                    await session.RunAsync("RETURN 1");
                 }
                 catch (Exception)
                 {
-                    // Connection test failed, but we'll continue
                     _logger.LogWarning("Could not test graph connection");
                 }
                 
-                _logger.LogInformation("Graph storage service initialized for {Host}:{Port}", settings.Host, settings.Port);
+                _logger.LogInformation("Graph storage service initialized for {Uri}", settings.Uri);
                 return true;
             }
             catch (Exception ex)
@@ -96,235 +78,51 @@ namespace Codivus.Graph.Services
                 if (!_configuration.Enabled)
                 {
                     _logger.LogInformation("Graph storage is disabled, skipping schema creation");
-                    return true; // Return true for disabled state to satisfy unit tests
+                    return true;
                 }
 
-                if (_g == null || _client == null) return false;
+                if (_driver == null) return false;
 
-                _logger.LogInformation("Creating JanusGraph schema with property keys and indexes");
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
 
-                // Use direct Gremlin script execution for JanusGraph management API
-                try
+                _logger.LogInformation("Creating Neo4j schema with constraints and indexes");
+
+                var schemaQueries = new[]
                 {
-                    await ExecuteJanusGraphSchemaScript();
-                }
-                catch (Exception ex)
+                    // Create constraints for unique external IDs
+                    "CREATE CONSTRAINT external_id_unique IF NOT EXISTS FOR (n:CodeNode) REQUIRE n.externalId IS UNIQUE",
+                    
+                    // Create indexes for performance
+                    "CREATE INDEX repository_index IF NOT EXISTS FOR (n:CodeNode) ON (n.repositoryId)",
+                    "CREATE INDEX node_type_index IF NOT EXISTS FOR (n:CodeNode) ON (n.nodeType)",
+                    "CREATE INDEX repository_type_index IF NOT EXISTS FOR (n:CodeNode) ON (n.repositoryId, n.nodeType)",
+                    "CREATE INDEX file_id_index IF NOT EXISTS FOR (n:CodeNode) ON (n.fileId)",
+                    "CREATE INDEX project_id_index IF NOT EXISTS FOR (n:CodeNode) ON (n.projectId)",
+                    
+                    // Create relationship indexes
+                    "CREATE INDEX relationship_external_id IF NOT EXISTS FOR ()-[r]-() ON (r.externalId)"
+                };
+
+                foreach (var query in schemaQueries)
                 {
-                    _logger.LogWarning(ex, "Advanced schema creation failed, using simple fallback");
-                    await CreateBasicSchemaFallback();
+                    try
+                    {
+                        await session.RunAsync(query);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to execute schema query: {Query}", query);
+                    }
                 }
                 
-                _logger.LogInformation("JanusGraph schema created successfully");
+                _logger.LogInformation("Neo4j schema created successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to create JanusGraph schema: {Message}", ex.Message);
+                _logger.LogError(ex, "Failed to create Neo4j schema: {Message}", ex.Message);
                 return false;
-            }
-        }
-
-        private async Task ExecuteJanusGraphSchemaScript()
-        {
-            var schemaScript = @"
-// Get management instance
-mgmt = graph.openManagement()
-
-// Create property keys if they don't exist
-if (!mgmt.containsPropertyKey('externalId')) {
-    externalId = mgmt.makePropertyKey('externalId').dataType(String.class).make()
-} else {
-    externalId = mgmt.getPropertyKey('externalId')
-}
-
-if (!mgmt.containsPropertyKey('name')) {
-    name = mgmt.makePropertyKey('name').dataType(String.class).make()
-} else {
-    name = mgmt.getPropertyKey('name')
-}
-
-if (!mgmt.containsPropertyKey('fullName')) {
-    fullName = mgmt.makePropertyKey('fullName').dataType(String.class).make()
-} else {
-    fullName = mgmt.getPropertyKey('fullName')
-}
-
-if (!mgmt.containsPropertyKey('displayName')) {
-    displayName = mgmt.makePropertyKey('displayName').dataType(String.class).make()
-} else {
-    displayName = mgmt.getPropertyKey('displayName')
-}
-
-if (!mgmt.containsPropertyKey('nodeType')) {
-    nodeType = mgmt.makePropertyKey('nodeType').dataType(String.class).make()
-} else {
-    nodeType = mgmt.getPropertyKey('nodeType')
-}
-
-if (!mgmt.containsPropertyKey('repositoryId')) {
-    repositoryId = mgmt.makePropertyKey('repositoryId').dataType(String.class).make()
-} else {
-    repositoryId = mgmt.getPropertyKey('repositoryId')
-}
-
-if (!mgmt.containsPropertyKey('projectId')) {
-    projectId = mgmt.makePropertyKey('projectId').dataType(String.class).make()
-} else {
-    projectId = mgmt.getPropertyKey('projectId')
-}
-
-if (!mgmt.containsPropertyKey('fileId')) {
-    fileId = mgmt.makePropertyKey('fileId').dataType(String.class).make()
-} else {
-    fileId = mgmt.getPropertyKey('fileId')
-}
-
-if (!mgmt.containsPropertyKey('checksum')) {
-    checksum = mgmt.makePropertyKey('checksum').dataType(String.class).make()
-} else {
-    checksum = mgmt.getPropertyKey('checksum')
-}
-
-if (!mgmt.containsPropertyKey('createdAt')) {
-    createdAt = mgmt.makePropertyKey('createdAt').dataType(Long.class).make()
-} else {
-    createdAt = mgmt.getPropertyKey('createdAt')
-}
-
-if (!mgmt.containsPropertyKey('updatedAt')) {
-    updatedAt = mgmt.makePropertyKey('updatedAt').dataType(Long.class).make()
-} else {
-    updatedAt = mgmt.getPropertyKey('updatedAt')
-}
-
-if (!mgmt.containsPropertyKey('context')) {
-    context = mgmt.makePropertyKey('context').dataType(String.class).make()
-} else {
-    context = mgmt.getPropertyKey('context')
-}
-
-// Create vertex labels if they don't exist
-if (!mgmt.containsVertexLabel('namespace')) {
-    mgmt.makeVertexLabel('namespace').make()
-}
-if (!mgmt.containsVertexLabel('type')) {
-    mgmt.makeVertexLabel('type').make()
-}
-if (!mgmt.containsVertexLabel('method')) {
-    mgmt.makeVertexLabel('method').make()
-}
-if (!mgmt.containsVertexLabel('property')) {
-    mgmt.makeVertexLabel('property').make()
-}
-if (!mgmt.containsVertexLabel('field')) {
-    mgmt.makeVertexLabel('field').make()
-}
-if (!mgmt.containsVertexLabel('parameter')) {
-    mgmt.makeVertexLabel('parameter').make()
-}
-if (!mgmt.containsVertexLabel('file')) {
-    mgmt.makeVertexLabel('file').make()
-}
-if (!mgmt.containsVertexLabel('project')) {
-    mgmt.makeVertexLabel('project').make()
-}
-if (!mgmt.containsVertexLabel('assembly')) {
-    mgmt.makeVertexLabel('assembly').make()
-}
-
-// Create edge labels if they don't exist
-if (!mgmt.containsEdgeLabel('contains')) {
-    mgmt.makeEdgeLabel('contains').make()
-}
-if (!mgmt.containsEdgeLabel('inherits')) {
-    mgmt.makeEdgeLabel('inherits').make()
-}
-if (!mgmt.containsEdgeLabel('implements')) {
-    mgmt.makeEdgeLabel('implements').make()
-}
-if (!mgmt.containsEdgeLabel('calls')) {
-    mgmt.makeEdgeLabel('calls').make()
-}
-if (!mgmt.containsEdgeLabel('uses')) {
-    mgmt.makeEdgeLabel('uses').make()
-}
-if (!mgmt.containsEdgeLabel('references')) {
-    mgmt.makeEdgeLabel('references').make()
-}
-if (!mgmt.containsEdgeLabel('declares')) {
-    mgmt.makeEdgeLabel('declares').make()
-}
-if (!mgmt.containsEdgeLabel('overrides')) {
-    mgmt.makeEdgeLabel('overrides').make()
-}
-
-// Create composite indexes for efficient querying
-if (!mgmt.containsGraphIndex('externalIdIndex')) {
-    mgmt.buildIndex('externalIdIndex', Vertex.class).addKey(externalId).unique().buildCompositeIndex()
-}
-
-if (!mgmt.containsGraphIndex('repositoryIndex')) {
-    mgmt.buildIndex('repositoryIndex', Vertex.class).addKey(repositoryId).buildCompositeIndex()
-}
-
-if (!mgmt.containsGraphIndex('nodeTypeIndex')) {
-    mgmt.buildIndex('nodeTypeIndex', Vertex.class).addKey(nodeType).buildCompositeIndex()
-}
-
-if (!mgmt.containsGraphIndex('repositoryTypeIndex')) {
-    mgmt.buildIndex('repositoryTypeIndex', Vertex.class).addKey(repositoryId).addKey(nodeType).buildCompositeIndex()
-}
-
-// Commit the schema changes
-mgmt.commit()
-
-// Wait for indexes to become available
-graph.tx().rollback()  // Clear any existing transaction
-mgmt = graph.openManagement()
-mgmt.awaitGraphIndexStatus(graph, 'externalIdIndex').call()
-mgmt.awaitGraphIndexStatus(graph, 'repositoryIndex').call()
-mgmt.awaitGraphIndexStatus(graph, 'nodeTypeIndex').call()
-mgmt.awaitGraphIndexStatus(graph, 'repositoryTypeIndex').call()
-mgmt.commit()
-
-return 'Schema created successfully'
-";
-
-            try
-            {
-                _logger.LogDebug("Executing JanusGraph schema creation script");
-                await _client!.SubmitAsync(schemaScript);
-                _logger.LogDebug("Schema script submitted successfully");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Schema script execution failed, attempting simpler approach");
-                
-                // Fallback: Try basic property creation without complex management API
-                await CreateBasicSchemaFallback();
-            }
-        }
-
-        private async Task CreateBasicSchemaFallback()
-        {
-            try
-            {
-                // Simple fallback - just try to create some test data to initialize basic schema
-                var testNode = await _g.AddV("test")
-                    .Property(GraphSchema.PropertyKeys.ExternalId, "schema-test")
-                    .Property(GraphSchema.PropertyKeys.Name, "test")
-                    .Property(GraphSchema.PropertyKeys.NodeType, "test")
-                    .Property(GraphSchema.PropertyKeys.RepositoryId, "test-repo")
-                    .Promise(t => t.Next());
-
-                // Clean up test node
-                await _g.V().Has(GraphSchema.PropertyKeys.ExternalId, "schema-test").Drop().Promise(t => t.Iterate());
-                
-                _logger.LogInformation("Basic schema fallback completed - graph should now accept our property structure");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Basic schema fallback also failed: {Message}", ex.Message);
             }
         }
 
@@ -332,12 +130,16 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) return false;
+                if (_driver == null) return false;
 
-                await _g.V()
-                    .Has(GraphSchema.PropertyKeys.RepositoryId, repositoryId)
-                    .Drop()
-                    .Promise(t => t.Iterate());
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+
+                var query = @"
+                    MATCH (n:CodeNode {repositoryId: $repositoryId})
+                    DETACH DELETE n";
+
+                await session.RunAsync(query, new { repositoryId });
 
                 _logger.LogInformation("Cleared graph for repository {RepositoryId}", repositoryId);
                 return true;
@@ -353,49 +155,47 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) throw new InvalidOperationException("Graph not initialized");
+                if (_driver == null) throw new InvalidOperationException("Graph not initialized");
 
                 node.Id = node.Id ?? Guid.NewGuid().ToString();
                 node.CreatedAt = DateTime.UtcNow;
                 node.UpdatedAt = node.CreatedAt;
 
-                var label = GetVertexLabel(node.NodeType);
-                var traversal = _g.AddV(label)
-                    .Property(GraphSchema.PropertyKeys.ExternalId, node.Id)
-                    .Property(GraphSchema.PropertyKeys.Name, node.Name ?? "")
-                    .Property(GraphSchema.PropertyKeys.FullName, node.FullName ?? "")
-                    .Property(GraphSchema.PropertyKeys.DisplayName, node.DisplayName ?? "")
-                    .Property(GraphSchema.PropertyKeys.NodeType, node.NodeType.ToString())
-                    .Property(GraphSchema.PropertyKeys.RepositoryId, node.RepositoryId ?? "")
-                    .Property(GraphSchema.PropertyKeys.ProjectId, node.ProjectId ?? "")
-                    .Property(GraphSchema.PropertyKeys.FileId, node.FileId ?? "")
-                    .Property(GraphSchema.PropertyKeys.Checksum, node.Checksum ?? "")
-                    .Property(GraphSchema.PropertyKeys.CreatedAt, node.CreatedAt.Ticks)
-                    .Property(GraphSchema.PropertyKeys.UpdatedAt, node.UpdatedAt.Ticks);
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
 
-                var createdVertex = await traversal.Promise(t => t.Next());
-                
-                if (createdVertex == null)
-                {
-                    throw new InvalidOperationException($"Failed to create vertex for node {node.Id}");
-                }
+                var query = @"
+                    CREATE (n:CodeNode {
+                        externalId: $externalId,
+                        name: $name,
+                        fullName: $fullName,
+                        displayName: $displayName,
+                        nodeType: $nodeType,
+                        repositoryId: $repositoryId,
+                        projectId: $projectId,
+                        fileId: $fileId,
+                        checksum: $checksum,
+                        createdAt: $createdAt,
+                        updatedAt: $updatedAt
+                    })
+                    RETURN n";
 
-                _logger.LogDebug("Created node {NodeId} of type {NodeType} with vertex ID {VertexId}", node.Id, node.NodeType, createdVertex.Id);
-                
-                // JanusGraph auto-commits single operations, but let's add a small delay to ensure consistency
-                await Task.Delay(100);
-                
-                // Verify the node was actually created
-                var verifyVertices = await _g.V().Has(GraphSchema.PropertyKeys.ExternalId, node.Id).Promise(t => t.ToList());
-                if (verifyVertices.Count > 0)
+                await session.RunAsync(query, new
                 {
-                    _logger.LogDebug("CreateNodeAsync: Verified node {NodeId} was created successfully", node.Id);
-                }
-                else
-                {
-                    _logger.LogWarning("CreateNodeAsync: Could not verify node {NodeId} creation - may not have been committed", node.Id);
-                }
-                
+                    externalId = node.Id,
+                    name = node.Name ?? "",
+                    fullName = node.FullName ?? "",
+                    displayName = node.DisplayName ?? "",
+                    nodeType = node.NodeType.ToString(),
+                    repositoryId = node.RepositoryId ?? "",
+                    projectId = node.ProjectId ?? "",
+                    fileId = node.FileId ?? "",
+                    checksum = node.Checksum ?? "",
+                    createdAt = node.CreatedAt.Ticks,
+                    updatedAt = node.UpdatedAt.Ticks
+                });
+
+                _logger.LogDebug("Created node {NodeId} of type {NodeType}", node.Id, node.NodeType);
                 return node;
             }
             catch (Exception ex)
@@ -429,31 +229,19 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) return null;
+                if (_driver == null) return null;
 
-                _logger.LogDebug("GetNodeAsync: Looking for node with ExternalId {NodeId}", nodeId);
-                
-                // Try indexed approach first - use ToList instead of Next to avoid exceptions
-                var vertices = await _g.V().Has(GraphSchema.PropertyKeys.ExternalId, nodeId).Promise(t => t.ToList());
-                var vertex = vertices.FirstOrDefault();
-                
-                if (vertex == null)
-                {
-                    _logger.LogDebug("GetNodeAsync: No vertex found with indexed query, trying scan approach");
-                    // Fallback: scan all vertices if indexing isn't working
-                    var allVertices = await _g.V().Promise(t => t.ToList());
-                    vertex = allVertices.FirstOrDefault(v => 
-                    {
-                        var externalId = GetPropertyValue<string>(v, GraphSchema.PropertyKeys.ExternalId);
-                        return externalId == nodeId;
-                    });
-                }
-                
-                _logger.LogDebug("GetNodeAsync: Found vertex with ID {VertexId}", vertex?.Id);
-                
-                var result = MapVertexToNode(vertex);
-                _logger.LogDebug("GetNodeAsync: Mapped to node with ExternalId {ResultExternalId}", result?.Id);
-                return result;
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+
+                var query = "MATCH (n:CodeNode {externalId: $nodeId}) RETURN n";
+                var result = await session.RunAsync(query, new { nodeId });
+                var record = await result.PeekAsync();
+
+                if (record == null) return null;
+
+                var node = record["n"].As<INode>();
+                return MapNodeToCodeNode(node);
             }
             catch (Exception ex)
             {
@@ -466,14 +254,31 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) return Enumerable.Empty<CodeNode>();
+                if (_driver == null) return Enumerable.Empty<CodeNode>();
 
-                var vertices = await _g.V()
-                    .Has(GraphSchema.PropertyKeys.RepositoryId, repositoryId)
-                    .Has(GraphSchema.PropertyKeys.NodeType, nodeType.ToString())
-                    .Promise(t => t.ToList());
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
 
-                return vertices.Select(MapVertexToNode).Where(n => n != null)!;
+                var query = @"
+                    MATCH (n:CodeNode {repositoryId: $repositoryId, nodeType: $nodeType})
+                    RETURN n";
+
+                var result = await session.RunAsync(query, new
+                {
+                    repositoryId,
+                    nodeType = nodeType.ToString()
+                });
+
+                var nodes = new List<CodeNode>();
+                await foreach (var record in result)
+                {
+                    var node = record["n"].As<INode>();
+                    var codeNode = MapNodeToCodeNode(node);
+                    if (codeNode != null)
+                        nodes.Add(codeNode);
+                }
+
+                return nodes;
             }
             catch (Exception ex)
             {
@@ -482,24 +287,80 @@ return 'Schema created successfully'
             }
         }
 
+        public async Task<IEnumerable<CodeNode>> GetAllNodesAsync(string repositoryId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (_driver == null) 
+                {
+                    await InitializeAsync(cancellationToken);
+                    if (_driver == null)
+                    {
+                        _logger.LogError("Failed to initialize driver, returning empty collection");
+                        return Enumerable.Empty<CodeNode>();
+                    }
+                }
+
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+
+                var query = @"
+                    MATCH (n:CodeNode {repositoryId: $repositoryId})
+                    RETURN n
+                    LIMIT 1000";
+
+                var result = await session.RunAsync(query, new { repositoryId });
+
+                var nodes = new List<CodeNode>();
+                await foreach (var record in result)
+                {
+                    var node = record["n"].As<INode>();
+                    var codeNode = MapNodeToCodeNode(node);
+                    if (codeNode != null)
+                        nodes.Add(codeNode);
+                }
+
+                _logger.LogDebug("Retrieved {Count} nodes for repository {RepositoryId}", nodes.Count, repositoryId);
+                return nodes;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get all nodes for repository {RepositoryId}", repositoryId);
+                return Enumerable.Empty<CodeNode>();
+            }
+        }
+
         public async Task<CodeRelationship> CreateRelationshipAsync(CodeRelationship relationship, CancellationToken cancellationToken = default)
         {
             try
             {
-                if (_g == null) throw new InvalidOperationException("Graph not initialized");
+                if (_driver == null) throw new InvalidOperationException("Graph not initialized");
 
                 relationship.Id = relationship.Id ?? Guid.NewGuid().ToString();
                 relationship.CreatedAt = DateTime.UtcNow;
 
-                var label = GetEdgeLabel(relationship.Type);
-                var traversal = _g.V().Has(GraphSchema.PropertyKeys.ExternalId, relationship.SourceNodeId)
-                    .AddE(label)
-                    .To(V().Has(GraphSchema.PropertyKeys.ExternalId, relationship.TargetNodeId))
-                    .Property(GraphSchema.PropertyKeys.ExternalId, relationship.Id)
-                    .Property(GraphSchema.PropertyKeys.Context, relationship.Context ?? "")
-                    .Property(GraphSchema.PropertyKeys.CreatedAt, relationship.CreatedAt.Ticks);
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
 
-                await traversal.Promise(t => t.Iterate());
+                var relationshipType = GetRelationshipType(relationship.Type);
+                var query = $@"
+                    MATCH (source:CodeNode {{externalId: $sourceId}})
+                    MATCH (target:CodeNode {{externalId: $targetId}})
+                    CREATE (source)-[r:{relationshipType} {{
+                        externalId: $externalId,
+                        context: $context,
+                        createdAt: $createdAt
+                    }}]->(target)
+                    RETURN r";
+
+                await session.RunAsync(query, new
+                {
+                    sourceId = relationship.SourceNodeId,
+                    targetId = relationship.TargetNodeId,
+                    externalId = relationship.Id,
+                    context = relationship.Context ?? "",
+                    createdAt = relationship.CreatedAt.Ticks
+                });
 
                 _logger.LogDebug("Created relationship {RelationshipId} of type {Type}", relationship.Id, relationship.Type);
                 return relationship;
@@ -522,13 +383,79 @@ return 'Schema created successfully'
 
             try
             {
-                if (_g == null) return metrics;
+                if (_driver == null) return metrics;
 
-                // Get vertex counts
-                metrics.VertexCount = await _g.V()
-                    .Has(GraphSchema.PropertyKeys.RepositoryId, repositoryId)
-                    .Count()
-                    .Promise(t => t.Next());
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+
+                // Get total nodes count
+                var nodeQuery = "MATCH (n:CodeNode {repositoryId: $repositoryId}) RETURN count(n) as nodeCount";
+                var nodeResult = await session.RunAsync(nodeQuery, new { repositoryId });
+                var nodeRecord = await nodeResult.SingleAsync();
+                metrics.VertexCount = nodeRecord["nodeCount"].As<long>();
+
+                // Get total relationships count
+                var edgeQuery = "MATCH (n:CodeNode {repositoryId: $repositoryId})-[r]->(m:CodeNode {repositoryId: $repositoryId}) RETURN count(r) as edgeCount";
+                var edgeResult = await session.RunAsync(edgeQuery, new { repositoryId });
+                var edgeRecord = await edgeResult.SingleAsync();
+                metrics.EdgeCount = edgeRecord["edgeCount"].As<long>();
+
+                // Get node counts by type
+                var typeQuery = @"
+                    MATCH (n:CodeNode {repositoryId: $repositoryId}) 
+                    RETURN n.nodeType as nodeType, count(n) as count";
+                var typeResult = await session.RunAsync(typeQuery, new { repositoryId });
+                
+                await foreach (var record in typeResult)
+                {
+                    var nodeType = record["nodeType"].As<string>() ?? "Unknown";
+                    var count = record["count"].As<long>();
+                    metrics.VertexCountByType[nodeType] = count;
+                    
+                    // Map to specific metrics
+                    switch (nodeType.ToLower())
+                    {
+                        case "project":
+                            metrics.TotalProjects = count;
+                            break;
+                        case "file":
+                            metrics.TotalFiles = count;
+                            break;
+                        case "class":
+                        case "interface":
+                        case "struct":
+                        case "enum":
+                            metrics.TotalTypes += count;
+                            break;
+                        case "method":
+                        case "constructor":
+                        case "property":
+                            metrics.TotalMethods += count;
+                            break;
+                    }
+                }
+
+                // Get relationship counts by type
+                var relTypeQuery = @"
+                    MATCH (n:CodeNode {repositoryId: $repositoryId})-[r]->(m:CodeNode {repositoryId: $repositoryId}) 
+                    RETURN type(r) as relType, count(r) as count";
+                var relTypeResult = await session.RunAsync(relTypeQuery, new { repositoryId });
+                
+                await foreach (var record in relTypeResult)
+                {
+                    var relType = record["relType"].As<string>() ?? "Unknown";
+                    var count = record["count"].As<long>();
+                    metrics.EdgeCountByType[relType] = count;
+                }
+
+                // Calculate average coupling (average outgoing relationships per node)
+                if (metrics.VertexCount > 0)
+                {
+                    metrics.AverageCoupling = (double)metrics.EdgeCount / metrics.VertexCount;
+                }
+
+                _logger.LogDebug("Retrieved metrics for repository {RepositoryId}: {NodeCount} nodes, {EdgeCount} edges", 
+                    repositoryId, metrics.VertexCount, metrics.EdgeCount);
 
                 return metrics;
             }
@@ -541,166 +468,101 @@ return 'Schema created successfully'
 
         public async Task<IGraphTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         {
-            return new GraphTransaction(this);
-        }
-
-        // Helper methods
-        private static string GetVertexLabel(NodeType nodeType)
-        {
-            return nodeType switch
+            if (!_configuration.Enabled || _driver == null)
             {
-                NodeType.Namespace => GraphSchema.VertexLabels.Namespace,
-                NodeType.Type => GraphSchema.VertexLabels.Type,
-                NodeType.Method => GraphSchema.VertexLabels.Method,
-                NodeType.Property => GraphSchema.VertexLabels.Property,
-                NodeType.Field => GraphSchema.VertexLabels.Field,
-                NodeType.Parameter => GraphSchema.VertexLabels.Parameter,
-                NodeType.File => GraphSchema.VertexLabels.File,
-                NodeType.Project => GraphSchema.VertexLabels.Project,
-                NodeType.Assembly => GraphSchema.VertexLabels.Assembly,
-                _ => throw new ArgumentException($"Unknown node type: {nodeType}")
-            };
+                return new NullGraphTransaction();
+            }
+            
+            var settings = _configuration.Neo4j;
+            var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+            var transaction = await session.BeginTransactionAsync();
+            
+            return new GraphTransaction(session, transaction, this);
         }
 
-        private static string GetEdgeLabel(RelationshipType relationshipType)
+        private static string GetRelationshipType(RelationshipType relationshipType)
         {
             return relationshipType switch
             {
-                RelationshipType.Contains => GraphSchema.EdgeLabels.Contains,
-                RelationshipType.Inherits => GraphSchema.EdgeLabels.Inherits,
-                RelationshipType.Implements => GraphSchema.EdgeLabels.Implements,
-                RelationshipType.Calls => GraphSchema.EdgeLabels.Calls,
-                RelationshipType.Uses => GraphSchema.EdgeLabels.Uses,
-                RelationshipType.References => GraphSchema.EdgeLabels.References,
-                RelationshipType.Declares => GraphSchema.EdgeLabels.Declares,
-                RelationshipType.Overrides => GraphSchema.EdgeLabels.Overrides,
-                _ => relationshipType.ToString().ToLower()
+                RelationshipType.Contains => "CONTAINS",
+                RelationshipType.Inherits => "INHERITS",
+                RelationshipType.Implements => "IMPLEMENTS",
+                RelationshipType.Calls => "CALLS",
+                RelationshipType.Uses => "USES",
+                RelationshipType.References => "REFERENCES",
+                RelationshipType.Declares => "DECLARES",
+                RelationshipType.Overrides => "OVERRIDES",
+                _ => relationshipType.ToString().ToUpper()
             };
         }
 
-        private CodeNode? MapVertexToNode(Vertex vertex)
+        private CodeNode? MapNodeToCodeNode(INode node)
         {
-            if (vertex?.Id == null) return null;
+            if (node?.Properties == null) return null;
 
-            var node = new CodeNode
+            var properties = node.Properties;
+            var codeNode = new CodeNode
             {
-                Id = GetPropertyValue<string>(vertex, GraphSchema.PropertyKeys.ExternalId) ?? vertex.Id.ToString(),
-                Name = GetPropertyValue<string>(vertex, GraphSchema.PropertyKeys.Name) ?? "",
-                FullName = GetPropertyValue<string>(vertex, GraphSchema.PropertyKeys.FullName) ?? "",
-                DisplayName = GetPropertyValue<string>(vertex, GraphSchema.PropertyKeys.DisplayName) ?? "",
-                RepositoryId = GetPropertyValue<string>(vertex, GraphSchema.PropertyKeys.RepositoryId) ?? "",
-                ProjectId = GetPropertyValue<string>(vertex, GraphSchema.PropertyKeys.ProjectId) ?? "",
-                FileId = GetPropertyValue<string>(vertex, GraphSchema.PropertyKeys.FileId) ?? "",
-                Checksum = GetPropertyValue<string>(vertex, GraphSchema.PropertyKeys.Checksum) ?? ""
+                Id = properties.GetValueOrDefault("externalId")?.As<string>() ?? "",
+                Name = properties.GetValueOrDefault("name")?.As<string>() ?? "",
+                FullName = properties.GetValueOrDefault("fullName")?.As<string>() ?? "",
+                DisplayName = properties.GetValueOrDefault("displayName")?.As<string>() ?? "",
+                RepositoryId = properties.GetValueOrDefault("repositoryId")?.As<string>() ?? "",
+                ProjectId = properties.GetValueOrDefault("projectId")?.As<string>() ?? "",
+                FileId = properties.GetValueOrDefault("fileId")?.As<string>() ?? "",
+                Checksum = properties.GetValueOrDefault("checksum")?.As<string>() ?? ""
             };
 
             // Parse node type
-            var nodeTypeStr = GetPropertyValue<string>(vertex, GraphSchema.PropertyKeys.NodeType);
-            if (Enum.TryParse<NodeType>(nodeTypeStr, out var nodeType))
+            var nodeTypeStr = properties.GetValueOrDefault("nodeType")?.As<string>();
+            if (!string.IsNullOrEmpty(nodeTypeStr) && Enum.TryParse<NodeType>(nodeTypeStr, out var nodeType))
             {
-                node.NodeType = nodeType;
+                codeNode.NodeType = nodeType;
             }
 
             // Parse timestamps
-            var createdAtTicks = GetPropertyValue<long>(vertex, GraphSchema.PropertyKeys.CreatedAt);
+            var createdAtTicks = properties.GetValueOrDefault("createdAt")?.As<long>() ?? 0;
             if (createdAtTicks > 0)
             {
-                node.CreatedAt = new DateTime(createdAtTicks);
+                codeNode.CreatedAt = new DateTime(createdAtTicks);
             }
 
-            var updatedAtTicks = GetPropertyValue<long>(vertex, GraphSchema.PropertyKeys.UpdatedAt);
+            var updatedAtTicks = properties.GetValueOrDefault("updatedAt")?.As<long>() ?? 0;
             if (updatedAtTicks > 0)
             {
-                node.UpdatedAt = new DateTime(updatedAtTicks);
+                codeNode.UpdatedAt = new DateTime(updatedAtTicks);
             }
 
-            return node;
-        }
-
-
-        private T? GetPropertyValue<T>(Vertex vertex, string propertyKey)
-        {
-            try
-            {
-                // JanusGraph returns properties - try different access patterns
-                if (vertex.Properties != null)
-                {
-                    // Try direct property access first
-                    foreach (var kvp in vertex.Properties)
-                    {
-                        if (kvp.Key == propertyKey)
-                        {
-                            var propertyValue = kvp.Value;
-                            
-                            // Handle array of property objects (JanusGraph format)
-                            if (propertyValue is IList<dynamic> list && list.Count > 0)
-                            {
-                                var propertyObj = list[0];
-                                if (propertyObj != null && propertyObj.Value != null)
-                                {
-                                    var value = propertyObj.Value;
-                                    
-                                    // Handle string conversion for numeric types
-                                    if (typeof(T) == typeof(string) && value != null)
-                                    {
-                                        return (T)(object)value.ToString()!;
-                                    }
-                                    
-                                    if (value is T typedValue)
-                                        return typedValue;
-                                    
-                                    return (T?)Convert.ChangeType(value, typeof(T));
-                                }
-                            }
-                            
-                            // Handle direct value (simple format)
-                            if (propertyValue is T directValue)
-                            {
-                                return directValue;
-                            }
-                                
-                            // Handle string conversion for numeric types
-                            if (typeof(T) == typeof(string) && propertyValue != null)
-                            {
-                                var stringValue = propertyValue.ToString();
-                                return (T)(object)stringValue!;
-                            }
-                                
-                            // Try to convert direct value
-                            try
-                            {
-                                var convertedValue = (T?)Convert.ChangeType(propertyValue, typeof(T));
-                                return convertedValue;
-                            }
-                            catch
-                            {
-                                // Continue to next property or return default
-                            }
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore property access errors - this is common during development
-            }
-            return default;
+            return codeNode;
         }
 
         public async Task<CodeNode> UpdateNodeAsync(CodeNode node, CancellationToken cancellationToken = default)
         {
             try
             {
-                if (_g == null) throw new InvalidOperationException("Graph not initialized");
+                if (_driver == null) throw new InvalidOperationException("Graph not initialized");
 
                 node.UpdatedAt = DateTime.UtcNow;
 
-                await _g.V().Has(GraphSchema.PropertyKeys.ExternalId, node.Id)
-                    .Property(GraphSchema.PropertyKeys.Name, node.Name ?? "")
-                    .Property(GraphSchema.PropertyKeys.FullName, node.FullName ?? "")
-                    .Property(GraphSchema.PropertyKeys.DisplayName, node.DisplayName ?? "")
-                    .Property(GraphSchema.PropertyKeys.UpdatedAt, node.UpdatedAt.Ticks)
-                    .Promise(t => t.Iterate());
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+
+                var query = @"
+                    MATCH (n:CodeNode {externalId: $externalId})
+                    SET n.name = $name,
+                        n.fullName = $fullName,
+                        n.displayName = $displayName,
+                        n.updatedAt = $updatedAt
+                    RETURN n";
+
+                await session.RunAsync(query, new
+                {
+                    externalId = node.Id,
+                    name = node.Name ?? "",
+                    fullName = node.FullName ?? "",
+                    displayName = node.DisplayName ?? "",
+                    updatedAt = node.UpdatedAt.Ticks
+                });
 
                 return node;
             }
@@ -715,60 +577,23 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) return false;
+                if (_driver == null) return false;
 
-                _logger.LogDebug("DeleteNodeAsync: Starting deletion for ExternalId {NodeId}", nodeId);
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
 
-                // Use the exact same approach as GetNodeAsync for consistency
-                var vertices = await _g.V().Has(GraphSchema.PropertyKeys.ExternalId, nodeId).Promise(t => t.ToList());
-                var vertex = vertices.FirstOrDefault();
+                var query = "MATCH (n:CodeNode {externalId: $nodeId}) DETACH DELETE n RETURN count(n) as deleted";
+                var result = await session.RunAsync(query, new { nodeId });
+                var record = await result.SingleAsync();
+
+                var deletedCount = record["deleted"].As<long>();
+                _logger.LogDebug("Deleted {Count} nodes with ExternalId {NodeId}", deletedCount, nodeId);
                 
-                if (vertex == null)
-                {
-                    // Fallback: scan all vertices if indexing isn't working
-                    var allVertices = await _g.V().Promise(t => t.ToList());
-                    vertex = allVertices.FirstOrDefault(v => 
-                    {
-                        var externalId = GetPropertyValue<string>(v, GraphSchema.PropertyKeys.ExternalId);
-                        return externalId == nodeId;
-                    });
-                    
-                    if (vertex != null)
-                    {
-                        vertices = new List<Vertex> { vertex };
-                    }
-                    else
-                    {
-                        vertices = new List<Vertex>();
-                    }
-                }
-                
-                if (vertices.Count == 0)
-                {
-                    _logger.LogWarning("DeleteNodeAsync: No vertices found with ExternalId {NodeId} for deletion", nodeId);
-                    return false;
-                }
-                
-                // Delete using the vertex IDs
-                await _g.V(vertices.Select(v => v.Id).ToArray()).Drop().Promise(t => t.Iterate());
-                
-                // Add a small delay to ensure the delete operation is committed
-                await Task.Delay(100);
-                
-                // Verify the deletion actually worked
-                var verifyVertices = await _g.V().Has(GraphSchema.PropertyKeys.ExternalId, nodeId).Promise(t => t.ToList());
-                if (verifyVertices.Count > 0)
-                {
-                    _logger.LogWarning("DeleteNodeAsync: Vertices still exist after delete operation for {NodeId}", nodeId);
-                    return false;
-                }
-                
-                _logger.LogDebug("DeleteNodeAsync: Successfully deleted {Count} vertices with ExternalId {NodeId}", vertices.Count, nodeId);
-                return true;
+                return deletedCount > 0;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "DeleteNodeAsync: Failed to delete node {NodeId}: {Message}", nodeId, ex.Message);
+                _logger.LogError(ex, "Failed to delete node {NodeId}: {Message}", nodeId, ex.Message);
                 return false;
             }
         }
@@ -777,10 +602,16 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) return false;
+                if (_driver == null) return false;
 
-                var count = await _g.V().Has(GraphSchema.PropertyKeys.ExternalId, nodeId).Count().Promise(t => t.Next());
-                return count > 0;
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+
+                var query = "MATCH (n:CodeNode {externalId: $nodeId}) RETURN count(n) as count";
+                var result = await session.RunAsync(query, new { nodeId });
+                var record = await result.SingleAsync();
+
+                return record["count"].As<long>() > 0;
             }
             catch (Exception ex)
             {
@@ -829,25 +660,25 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) throw new InvalidOperationException("Graph not initialized");
+                if (_driver == null) throw new InvalidOperationException("Graph not initialized");
 
                 relationship.UpdatedAt = DateTime.UtcNow;
 
-                // Find the edge by scanning all edges first
-                var allEdges = await _g.E().Promise(t => t.ToList());
-                var targetEdge = allEdges.FirstOrDefault(e => 
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+
+                var query = @"
+                    MATCH ()-[r {externalId: $externalId}]-()
+                    SET r.context = $context,
+                        r.updatedAt = $updatedAt
+                    RETURN r";
+
+                await session.RunAsync(query, new
                 {
-                    var externalId = GetEdgePropertyValue<string>(e, GraphSchema.PropertyKeys.ExternalId);
-                    return externalId == relationship.Id;
+                    externalId = relationship.Id,
+                    context = relationship.Context ?? "",
+                    updatedAt = relationship.UpdatedAt.Ticks
                 });
-
-                if (targetEdge == null)
-                    throw new InvalidOperationException($"Relationship with ExternalId {relationship.Id} not found for update");
-
-                await _g.E(targetEdge.Id)
-                    .Property(GraphSchema.PropertyKeys.Context, relationship.Context ?? "")
-                    .Property(GraphSchema.PropertyKeys.UpdatedAt, relationship.UpdatedAt.Ticks)
-                    .Promise(t => t.Next());
 
                 return relationship;
             }
@@ -862,45 +693,65 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) return Enumerable.Empty<CodeRelationship>();
+                if (_driver == null) return Enumerable.Empty<CodeRelationship>();
 
-                // Find the vertex by scanning all vertices first
-                var allVertices = await _g.V().Promise(t => t.ToList());
-                var targetVertex = allVertices.FirstOrDefault(v => 
-                {
-                    var externalId = GetPropertyValue<string>(v, GraphSchema.PropertyKeys.ExternalId);
-                    return externalId == nodeId;
-                });
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
 
-                if (targetVertex == null)
-                {
-                    return Enumerable.Empty<CodeRelationship>();
-                }
+                string query;
+                object parameters;
 
-                var edgeTraversal = _g.V(targetVertex.Id);
-                
                 if (outgoing)
                 {
-                    var outgoingEdges = edgeTraversal.OutE();
                     if (type.HasValue)
                     {
-                        var label = GetEdgeLabel(type.Value);
-                        outgoingEdges = outgoingEdges.HasLabel(label);
+                        var relationshipType = GetRelationshipType(type.Value);
+                        query = $@"
+                            MATCH (source:CodeNode {{externalId: $nodeId}})-[r:{relationshipType}]->(target:CodeNode)
+                            RETURN r, source.externalId as sourceId, target.externalId as targetId";
                     }
-                    var edges = await outgoingEdges.Promise(t => t.ToList());
-                    return edges.Select(MapEdgeToRelationship).Where(r => r != null)!;
+                    else
+                    {
+                        query = @"
+                            MATCH (source:CodeNode {externalId: $nodeId})-[r]->(target:CodeNode)
+                            RETURN r, source.externalId as sourceId, target.externalId as targetId";
+                    }
                 }
                 else
                 {
-                    var incomingEdges = edgeTraversal.InE();
                     if (type.HasValue)
                     {
-                        var label = GetEdgeLabel(type.Value);
-                        incomingEdges = incomingEdges.HasLabel(label);
+                        var relationshipType = GetRelationshipType(type.Value);
+                        query = $@"
+                            MATCH (source:CodeNode)-[r:{relationshipType}]->(target:CodeNode {{externalId: $nodeId}})
+                            RETURN r, source.externalId as sourceId, target.externalId as targetId";
                     }
-                    var edges = await incomingEdges.Promise(t => t.ToList());
-                    return edges.Select(MapEdgeToRelationship).Where(r => r != null)!;
+                    else
+                    {
+                        query = @"
+                            MATCH (source:CodeNode)-[r]->(target:CodeNode {externalId: $nodeId})
+                            RETURN r, source.externalId as sourceId, target.externalId as targetId";
+                    }
                 }
+
+                parameters = new { nodeId };
+
+                var result = await session.RunAsync(query, parameters);
+                var relationships = new List<CodeRelationship>();
+
+                await foreach (var record in result)
+                {
+                    var relationship = MapRelationshipToCodeRelationship(
+                        record["r"].As<IRelationship>(),
+                        record["sourceId"].As<string>(),
+                        record["targetId"].As<string>()
+                    );
+                    
+                    if (relationship != null)
+                        relationships.Add(relationship);
+                }
+
+                return relationships;
             }
             catch (Exception ex)
             {
@@ -913,29 +764,19 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) return false;
+                if (_driver == null) return false;
 
-                // Find edges by filtering all edges - less efficient but more reliable without proper indexing
-                var allEdges = await _g.E().Promise(t => t.ToList());
-                var edges = allEdges.Where(e => 
-                {
-                    var externalId = GetEdgePropertyValue<string>(e, GraphSchema.PropertyKeys.ExternalId);
-                    return externalId == relationshipId;
-                }).ToList();
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+
+                var query = "MATCH ()-[r {externalId: $relationshipId}]-() DELETE r RETURN count(r) as deleted";
+                var result = await session.RunAsync(query, new { relationshipId });
+                var record = await result.SingleAsync();
+
+                var deletedCount = record["deleted"].As<long>();
+                _logger.LogDebug("Deleted {Count} relationships with ExternalId {RelationshipId}", deletedCount, relationshipId);
                 
-                if (edges.Count == 0)
-                {
-                    _logger.LogWarning("No edges found with ExternalId {RelationshipId} for deletion", relationshipId);
-                    return false;
-                }
-                
-                // Delete using the edge IDs to avoid enumeration issues
-                await _g.E(edges.Select(e => e.Id).ToArray()).Drop().Promise(t => t.Iterate());
-                
-                // Note: JanusGraph typically auto-commits single operations
-                
-                _logger.LogDebug("Successfully deleted {Count} edges with ExternalId {RelationshipId}", edges.Count, relationshipId);
-                return true;
+                return deletedCount > 0;
             }
             catch (Exception ex)
             {
@@ -948,17 +789,20 @@ return 'Schema created successfully'
         {
             try
             {
-                if (_g == null) return false;
+                if (_driver == null) return false;
 
-                var label = GetEdgeLabel(type);
-                var count = await _g.V().Has(GraphSchema.PropertyKeys.ExternalId, sourceId)
-                    .OutE(label)
-                    .InV()
-                    .Has(GraphSchema.PropertyKeys.ExternalId, targetId)
-                    .Count()
-                    .Promise(t => t.Next());
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
 
-                return count > 0;
+                var relationshipType = GetRelationshipType(type);
+                var query = $@"
+                    MATCH (source:CodeNode {{externalId: $sourceId}})-[r:{relationshipType}]->(target:CodeNode {{externalId: $targetId}})
+                    RETURN count(r) as count";
+
+                var result = await session.RunAsync(query, new { sourceId, targetId });
+                var record = await result.SingleAsync();
+
+                return record["count"].As<long>() > 0;
             }
             catch (Exception ex)
             {
@@ -1003,61 +847,39 @@ return 'Schema created successfully'
             return deleted;
         }
 
-        private CodeRelationship? MapEdgeToRelationship(Edge edge)
+        private CodeRelationship? MapRelationshipToCodeRelationship(IRelationship relationship, string sourceId, string targetId)
         {
-            if (edge?.Id == null) return null;
+            if (relationship?.Properties == null) return null;
 
-            var relationship = new CodeRelationship
+            var properties = relationship.Properties;
+            var codeRelationship = new CodeRelationship
             {
-                Id = GetEdgePropertyValue<string>(edge, GraphSchema.PropertyKeys.ExternalId) ?? edge.Id.ToString(),
-                SourceNodeId = edge.OutV?.ToString() ?? "",
-                TargetNodeId = edge.InV?.ToString() ?? "",
-                Context = GetEdgePropertyValue<string>(edge, GraphSchema.PropertyKeys.Context) ?? ""
+                Id = properties.GetValueOrDefault("externalId")?.As<string>() ?? "",
+                SourceNodeId = sourceId,
+                TargetNodeId = targetId,
+                Context = properties.GetValueOrDefault("context")?.As<string>() ?? ""
             };
 
-            // Parse relationship type from label
-            if (Enum.TryParse<RelationshipType>(edge.Label, true, out var relType))
+            // Parse relationship type from Neo4j relationship type
+            if (Enum.TryParse<RelationshipType>(relationship.Type, true, out var relType))
             {
-                relationship.Type = relType;
+                codeRelationship.Type = relType;
             }
 
             // Parse timestamps
-            var createdAtTicks = GetEdgePropertyValue<long>(edge, GraphSchema.PropertyKeys.CreatedAt);
+            var createdAtTicks = properties.GetValueOrDefault("createdAt")?.As<long>() ?? 0;
             if (createdAtTicks > 0)
             {
-                relationship.CreatedAt = new DateTime(createdAtTicks);
+                codeRelationship.CreatedAt = new DateTime(createdAtTicks);
             }
 
-            return relationship;
-        }
+            var updatedAtTicks = properties.GetValueOrDefault("updatedAt")?.As<long>() ?? 0;
+            if (updatedAtTicks > 0)
+            {
+                codeRelationship.UpdatedAt = new DateTime(updatedAtTicks);
+            }
 
-        private T? GetEdgePropertyValue<T>(Edge edge, string propertyKey)
-        {
-            try
-            {
-                // Edge properties are typically stored as direct key-value pairs
-                if (edge.Properties != null)
-                {
-                    // Try to access properties directly - edge properties structure varies
-                    foreach (var prop in edge.Properties)
-                    {
-                        if (prop.Key == propertyKey && prop.Value != null)
-                        {
-                            var value = prop.Value;
-                            if (value is T typedValue)
-                                return typedValue;
-                            
-                            // Try to convert
-                            return (T?)Convert.ChangeType(value, typeof(T));
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore property access errors
-            }
-            return default;
+            return codeRelationship;
         }
 
         public Task RecordQueryMetricsAsync(GraphQueryMetrics metrics, CancellationToken cancellationToken = default)
@@ -1068,12 +890,19 @@ return 'Schema created successfully'
         // Maintenance operations
         public async Task OptimizeIndicesAsync(CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+                throw new TaskCanceledException();
+            
             try
             {
                 _logger.LogDebug("Optimizing graph indices");
-                // In a real implementation, this would optimize JanusGraph indices
-                // For now, this is a placeholder that logs the operation
-                await Task.Delay(100, cancellationToken); // Simulate work
+                // Neo4j automatically optimizes indexes, but we can force a call to schema await
+                if (_driver != null)
+                {
+                    var settings = _configuration.Neo4j;
+                    await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+                    await session.RunAsync("CALL db.awaitIndexes()");
+                }
                 _logger.LogDebug("Graph indices optimization completed");
             }
             catch (Exception ex)
@@ -1085,17 +914,28 @@ return 'Schema created successfully'
 
         public async Task<int> CleanupOrphanedNodesAsync(CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+                throw new TaskCanceledException();
+            
             try
             {
                 _logger.LogDebug("Starting cleanup of orphaned nodes");
                 
-                // In a real implementation, this would:
-                // 1. Find nodes without any relationships
-                // 2. Remove nodes that are no longer referenced
-                // 3. Return the count of cleaned up nodes
-                
-                await Task.Delay(200, cancellationToken); // Simulate work
-                var cleanedCount = 0; // Placeholder - would return actual count
+                if (_driver == null) return 0;
+
+                var settings = _configuration.Neo4j;
+                await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+
+                // Find and delete nodes without any relationships
+                var query = @"
+                    MATCH (n:CodeNode)
+                    WHERE NOT (n)-[]-()
+                    DELETE n
+                    RETURN count(n) as deletedCount";
+
+                var result = await session.RunAsync(query);
+                var record = await result.SingleAsync();
+                var cleanedCount = (int)record["deletedCount"].As<long>();
                 
                 _logger.LogDebug("Cleaned up {Count} orphaned nodes", cleanedCount);
                 return cleanedCount;
@@ -1109,14 +949,24 @@ return 'Schema created successfully'
 
         public async Task DefragmentStorageAsync(CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+                throw new TaskCanceledException();
+            
             try
             {
                 _logger.LogDebug("Starting graph storage defragmentation");
                 
-                // In a real implementation, this would defragment the underlying storage
-                // This is typically a longer-running operation
+                // Neo4j doesn't require manual defragmentation
+                // But we can run a query to reorganize data
+                if (_driver != null)
+                {
+                    var settings = _configuration.Neo4j;
+                    await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+                    
+                    // This is a no-op for Neo4j as it handles storage optimization automatically
+                    await Task.Delay(100, cancellationToken);
+                }
                 
-                await Task.Delay(500, cancellationToken); // Simulate work
                 _logger.LogDebug("Graph storage defragmentation completed");
             }
             catch (Exception ex)
@@ -1128,14 +978,22 @@ return 'Schema created successfully'
 
         public async Task UpdateStatisticsAsync(CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+                throw new TaskCanceledException();
+            
             try
             {
                 _logger.LogDebug("Updating graph statistics");
                 
-                // In a real implementation, this would update graph statistics
-                // for query optimization and performance monitoring
+                if (_driver != null)
+                {
+                    var settings = _configuration.Neo4j;
+                    await using var session = _driver.AsyncSession(SessionConfigBuilder.ForDatabase(settings.Database));
+                    
+                    // Update Neo4j statistics
+                    await session.RunAsync("CALL db.stats.collect()");
+                }
                 
-                await Task.Delay(50, cancellationToken); // Simulate work
                 _logger.LogDebug("Graph statistics updated");
             }
             catch (Exception ex)
@@ -1150,50 +1008,150 @@ return 'Schema created successfully'
             if (_disposed)
                 return;
 
-            _remoteConnection?.Dispose();
-            _client?.Dispose();
+            _driver?.Dispose();
             _connectionLock?.Dispose();
             
             _disposed = true;
         }
 
-        // Simple transaction implementation
+        // Neo4j transaction implementation
         private class GraphTransaction : IGraphTransaction
         {
+            private readonly IAsyncSession _session;
+            private readonly IAsyncTransaction _transaction;
             private readonly GraphStorageService _service;
             private bool _disposed;
 
-            public GraphTransaction(GraphStorageService service)
+            public GraphTransaction(IAsyncSession session, IAsyncTransaction transaction, GraphStorageService service)
             {
+                _session = session;
+                _transaction = transaction;
                 _service = service;
             }
 
-            public Task<CodeNode> CreateNodeAsync(CodeNode node)
+            public async Task<CodeNode> CreateNodeAsync(CodeNode node)
             {
-                return _service.CreateNodeAsync(node);
+                node.Id = node.Id ?? Guid.NewGuid().ToString();
+                node.CreatedAt = DateTime.UtcNow;
+                node.UpdatedAt = node.CreatedAt;
+
+                var query = @"
+                    CREATE (n:CodeNode {
+                        externalId: $externalId,
+                        name: $name,
+                        fullName: $fullName,
+                        displayName: $displayName,
+                        nodeType: $nodeType,
+                        repositoryId: $repositoryId,
+                        projectId: $projectId,
+                        fileId: $fileId,
+                        checksum: $checksum,
+                        createdAt: $createdAt,
+                        updatedAt: $updatedAt
+                    })
+                    RETURN n";
+
+                await _transaction.RunAsync(query, new
+                {
+                    externalId = node.Id,
+                    name = node.Name ?? "",
+                    fullName = node.FullName ?? "",
+                    displayName = node.DisplayName ?? "",
+                    nodeType = node.NodeType.ToString(),
+                    repositoryId = node.RepositoryId ?? "",
+                    projectId = node.ProjectId ?? "",
+                    fileId = node.FileId ?? "",
+                    checksum = node.Checksum ?? "",
+                    createdAt = node.CreatedAt.Ticks,
+                    updatedAt = node.UpdatedAt.Ticks
+                });
+
+                return node;
             }
 
-            public Task<CodeRelationship> CreateRelationshipAsync(CodeRelationship relationship)
+            public async Task<CodeRelationship> CreateRelationshipAsync(CodeRelationship relationship)
             {
-                return _service.CreateRelationshipAsync(relationship);
+                relationship.Id = relationship.Id ?? Guid.NewGuid().ToString();
+                relationship.CreatedAt = DateTime.UtcNow;
+
+                var relationshipType = GetRelationshipType(relationship.Type);
+                var query = $@"
+                    MATCH (source:CodeNode {{externalId: $sourceId}})
+                    MATCH (target:CodeNode {{externalId: $targetId}})
+                    CREATE (source)-[r:{relationshipType} {{
+                        externalId: $externalId,
+                        context: $context,
+                        createdAt: $createdAt
+                    }}]->(target)
+                    RETURN r";
+
+                await _transaction.RunAsync(query, new
+                {
+                    sourceId = relationship.SourceNodeId,
+                    targetId = relationship.TargetNodeId,
+                    externalId = relationship.Id,
+                    context = relationship.Context ?? "",
+                    createdAt = relationship.CreatedAt.Ticks
+                });
+
+                return relationship;
             }
 
-            public Task CommitAsync()
+            public async Task CommitAsync()
             {
-                return Task.CompletedTask; // No-op for now
+                await _transaction.CommitAsync();
             }
 
-            public Task RollbackAsync()
+            public async Task RollbackAsync()
             {
-                return Task.CompletedTask; // No-op for now
+                await _transaction.RollbackAsync();
             }
 
-            public void Dispose()
+            public async void Dispose()
             {
                 if (_disposed)
                     return;
 
+                try
+                {
+                    await _transaction.DisposeAsync();
+                    await _session.DisposeAsync();
+                }
+                catch
+                {
+                    // Ignore disposal errors
+                }
+
                 _disposed = true;
+            }
+        }
+
+        // Null object pattern for when graph is disabled
+        private class NullGraphTransaction : IGraphTransaction
+        {
+            public Task<CodeNode> CreateNodeAsync(CodeNode node)
+            {
+                return Task.FromResult(node);
+            }
+
+            public Task<CodeRelationship> CreateRelationshipAsync(CodeRelationship relationship)
+            {
+                return Task.FromResult(relationship);
+            }
+
+            public Task CommitAsync()
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task RollbackAsync()
+            {
+                return Task.CompletedTask;
+            }
+
+            public void Dispose()
+            {
+                // No resources to dispose
             }
         }
     }

@@ -25,11 +25,12 @@ namespace Codivus.Graph.Tests.Services
             _configuration = new GraphConfiguration
             {
                 Enabled = false, // Disable actual connections for testing
-                JanusGraph = new JanusGraphSettings
+                Neo4j = new Neo4jSettings
                 {
-                    Host = "localhost",
-                    Port = 8182,
-                    ConnectionPoolSize = 5
+                    Uri = "bolt://localhost:7687",
+                    Username = "neo4j",
+                    Password = "pass12345678",
+                    MaxConnectionPoolSize = 5
                 }
             };
             
@@ -48,7 +49,7 @@ namespace Codivus.Graph.Tests.Services
         [Fact]
         public async Task InitializeAsync_WhenAlreadyInitialized_ShouldReturnTrue()
         {
-            // This test cannot reliably test the actual functionality without a real JanusGraph instance
+            // This test cannot reliably test the actual functionality without a real Neo4j instance
             // Instead, we test the basic behavior
             
             // Act & Assert - Should not throw

@@ -87,12 +87,18 @@ public class ConfigurationService : IConfigurationService
 
             await CreateDefaultConfigurationAsync("graph", new
             {
-                JanusGraph = new
+                Enabled = false,
+                Neo4j = new
                 {
-                    Host = "localhost",
-                    Port = 8182,
-                    EnableSsl = false,
-                    ConnectionPoolSize = 4
+                    Uri = "bolt://localhost:7687",
+                    Username = "neo4j",
+                    Password = "pass12345678",
+                    Database = "neo4j",
+                    MaxConnectionPoolSize = 50,
+                    ConnectionAcquisitionTimeout = "00:01:00",
+                    ConnectionTimeout = "00:00:30",
+                    EnableEncryption = false,
+                    TrustStrategy = "TrustAllCertificates"
                 }
             });
 

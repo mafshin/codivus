@@ -1,7 +1,7 @@
 # Comprehensive Implementation Plan for Graph-Based Repository Scanning
 
 ## Overview
-This plan introduces an optional graph-based scanning feature that creates a graph representation of repository code structure using JanusGraph and Roslyn. The graph will capture detailed symbol information and relationships, enabling advanced integration-level issue detection when combined with LLM embeddings.
+This plan introduces an optional graph-based scanning feature that creates a graph representation of repository code structure using Neo4j and Roslyn. The graph will capture detailed symbol information and relationships, enabling advanced integration-level issue detection when combined with LLM embeddings.
 
 ## Phase 1: Infrastructure Setup
 
@@ -9,7 +9,7 @@ This plan introduces an optional graph-based scanning feature that creates a gra
 ```
 src/Codivus.Graph/
 ├── Configuration/
-│   └── GraphConfiguration.cs          # JanusGraph connection settings
+│   └── GraphConfiguration.cs          # Neo4j connection settings
 ├── Interfaces/
 │   ├── IGraphStorageService.cs       # Graph CRUD operations
 │   ├── ICodeGraphBuilder.cs          # Build graph from code
@@ -20,7 +20,7 @@ src/Codivus.Graph/
 │   ├── GraphSchema.cs                # Graph schema definitions
 │   └── GraphMetrics.cs               # Performance metrics
 ├── Services/
-│   ├── GraphStorageService.cs        # JanusGraph implementation
+│   ├── GraphStorageService.cs        # Neo4j implementation
 │   ├── CodeGraphBuilder.cs           # Builds graph from Roslyn
 │   └── GraphQueryService.cs          # Query implementations
 └── Extensions/
@@ -182,7 +182,7 @@ public class GraphController : ControllerBase
 {
   "GraphScanning": {
     "Enabled": true,
-    "JanusGraph": {
+    "Neo4j": {
       "Host": "localhost",
       "Port": 8182,
       "Username": "",
@@ -255,7 +255,7 @@ public class GraphEnhancedScanningService
 ## Implementation Timeline
 
 **Week 1-2**: Infrastructure setup
-- Set up JanusGraph connection
+- Set up Neo4j connection
 - Implement basic graph service
 - Create task queue system
 

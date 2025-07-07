@@ -51,7 +51,7 @@ namespace Codivus.Graph.Interfaces
         
         // Custom queries
         Task<IEnumerable<Dictionary<string, object>>> ExecuteCustomQueryAsync(
-            string gremlinQuery,
+            string cypherQuery,
             Dictionary<string, object> parameters = null,
             CancellationToken cancellationToken = default);
         

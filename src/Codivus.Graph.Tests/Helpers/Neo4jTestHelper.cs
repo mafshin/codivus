@@ -5,17 +5,17 @@ using System.Threading.Tasks;
 namespace Codivus.Graph.Tests.Helpers
 {
     /// <summary>
-    /// Helper class for JanusGraph integration tests
+    /// Helper class for Neo4j integration tests
     /// </summary>
-    public static class JanusGraphTestHelper
+    public static class Neo4jTestHelper
     {
         private const string DefaultHost = "localhost";
-        private const int DefaultPort = 8182;
+        private const int DefaultPort = 7687;
 
         /// <summary>
-        /// Checks if JanusGraph is available for testing
+        /// Checks if Neo4j is available for testing
         /// </summary>
-        public static async Task<bool> IsJanusGraphAvailableAsync(string host = DefaultHost, int port = DefaultPort)
+        public static async Task<bool> IsNeo4jAvailableAsync(string host = DefaultHost, int port = DefaultPort)
         {
             try
             {
@@ -28,7 +28,7 @@ namespace Codivus.Graph.Tests.Helpers
                 if (completedTask == connectTask && tcpClient.Connected)
                 {
                     // Additional check: try to send a simple HTTP request
-                    return await TestJanusGraphHttpEndpoint(host, port);
+                    return await TestNeo4jHttpEndpoint(host, port);
                 }
                 
                 return false;
@@ -40,19 +40,18 @@ namespace Codivus.Graph.Tests.Helpers
         }
 
         /// <summary>
-        /// Tests if JanusGraph HTTP endpoint is responding
+        /// Tests if Neo4j HTTP endpoint is responding
         /// </summary>
-        private static async Task<bool> TestJanusGraphHttpEndpoint(string host, int port)
+        private static async Task<bool> TestNeo4jHttpEndpoint(string host, int port)
         {
             try
             {
                 using var httpClient = new System.Net.Http.HttpClient();
                 httpClient.Timeout = TimeSpan.FromSeconds(2);
                 
-                // Try a POST to /gremlin which should respond quickly with WebSocket error
-                var content = new System.Net.Http.StringContent("{\"gremlin\":\"g.V().count()\"}", 
-                    System.Text.Encoding.UTF8, "application/json");
-                var response = await httpClient.PostAsync($"http://{host}:{port}/gremlin", content);
+                // Try a GET to / which should respond quickly
+                var httpPort = port == 7687 ? 7474 : port; // Use HTTP port if Bolt port is provided
+                var response = await httpClient.GetAsync($"http://{host}:{httpPort}/");
                 
                 // Even if we get an error response, if we get any response, the server is running
                 return true;
@@ -64,11 +63,11 @@ namespace Codivus.Graph.Tests.Helpers
         }
 
         /// <summary>
-        /// Gets the connection string for JanusGraph tests
+        /// Gets the connection string for Neo4j tests
         /// </summary>
         public static string GetConnectionString(string host = DefaultHost, int port = DefaultPort)
         {
-            return $"ws://{host}:{port}/gremlin";
+            return $"bolt://{host}:{port}";
         }
 
         /// <summary>
@@ -83,7 +82,7 @@ namespace Codivus.Graph.Tests.Helpers
         }
 
         /// <summary>
-        /// Gets the reason why JanusGraph tests should be skipped, or null if tests should run
+        /// Gets the reason why Neo4j tests should be skipped, or null if tests should run
         /// </summary>
         public static async Task<string?> GetSkipReasonAsync()
         {
@@ -92,16 +91,16 @@ namespace Codivus.Graph.Tests.Helpers
                 return "Integration tests are disabled in CI/CD environments";
             }
 
-            if (!await IsJanusGraphAvailableAsync())
+            if (!await IsNeo4jAvailableAsync())
             {
-                return $"JanusGraph is not available at {DefaultHost}:{DefaultPort}. Please ensure JanusGraph is running.";
+                return $"Neo4j is not available at {DefaultHost}:{DefaultPort}. Please ensure Neo4j is running.";
             }
 
             return null;
         }
 
         /// <summary>
-        /// Determines if JanusGraph tests should be skipped
+        /// Determines if Neo4j tests should be skipped
         /// </summary>
         public static async Task<bool> ShouldSkipTestsAsync()
         {

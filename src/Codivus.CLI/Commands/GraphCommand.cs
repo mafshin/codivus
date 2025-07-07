@@ -115,7 +115,7 @@ public static class GraphCommand
             description: "Repository ID to query") { IsRequired = true };
         var queryOption = new Option<string>(
             "--query",
-            description: "Gremlin query to execute") { IsRequired = false };
+            description: "Cypher query to execute") { IsRequired = false };
         var nodeIdOption = new Option<string>(
             "--node-id",
             description: "Node ID for relationship queries") { IsRequired = false };

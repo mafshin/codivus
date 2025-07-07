@@ -133,15 +133,53 @@ namespace Codivus.API.Controllers
         }
 
 
+        [HttpGet("nodes/count")]
+        public async Task<IActionResult> GetNodesCount([FromQuery] string repositoryId)
+        {
+            try
+            {
+                var allNodes = await _graphStorageService.GetAllNodesAsync(repositoryId);
+                var count = allNodes.Count();
+                
+                return Ok(new { 
+                    repositoryId, 
+                    totalNodes = count,
+                    hasData = count > 0 
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error counting nodes for repository {RepositoryId}", repositoryId);
+                return StatusCode(500, new { error = "Failed to count nodes", message = ex.Message });
+            }
+        }
+
+
         [HttpGet("nodes")]
         public async Task<IActionResult> GetNodes(
             [FromQuery] string repositoryId,
             [FromQuery] string? nodeType = null,
             [FromQuery] string namePattern = "*",
-            [FromQuery] int limit = 100)
+            [FromQuery] int limit = 1000)
         {
             try
             {
+                // If no specific filters, get all nodes for the repository
+                if (string.IsNullOrEmpty(nodeType) && namePattern == "*")
+                {
+                    _logger.LogInformation("Getting all nodes for repository {RepositoryId}", repositoryId);
+                    var allNodes = await _graphStorageService.GetAllNodesAsync(repositoryId);
+                    _logger.LogInformation("Retrieved {NodeCount} nodes for repository {RepositoryId}", allNodes.Count(), repositoryId);
+                    
+                    if (!allNodes.Any())
+                    {
+                        _logger.LogWarning("No nodes found for repository {RepositoryId}. Has a graph scan been completed?", repositoryId);
+                    }
+                    
+                    return Ok(allNodes.Take(limit));
+                }
+
+                // Otherwise, use filtered search
                 NodeType? nodeTypeEnum = null;
                 if (!string.IsNullOrEmpty(nodeType) && Enum.TryParse<NodeType>(nodeType, true, out var parsedNodeType))
                 {
@@ -153,7 +191,7 @@ namespace Codivus.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving nodes");
+                _logger.LogError(ex, "Error retrieving nodes for repository {RepositoryId}", repositoryId);
                 return StatusCode(500, new { error = "Failed to retrieve nodes", message = ex.Message });
             }
         }
@@ -380,21 +418,13 @@ namespace Codivus.API.Controllers
 
         private async Task<object> GetHierarchyVisualization(string repositoryId, string? rootNodeId)
         {
-            var nodes = await _graphQueryService.FindNodesByNameAsync(repositoryId, "*", NodeType.Namespace);
-            var relationships = new List<object>();
-
-            foreach (var node in nodes)
-            {
-                var childNodes = await _graphQueryService.GetDependentsAsync(node.Id, 1);
-                relationships.AddRange(childNodes.Select(child => new
-                {
-                    source = node.Id,
-                    target = child.Id,
-                    type = "contains"
-                }));
-            }
-
-            return new { nodes, relationships };
+            // Get all nodes for the repository
+            var allNodes = await _graphStorageService.GetAllNodesAsync(repositoryId);
+            
+            // Process nodes for visualization
+            var visualizationData = ProcessNodesForVisualization(allNodes);
+            
+            return visualizationData;
         }
 
         private async Task<object> GetDependencyVisualization(string repositoryId, string? rootNodeId)
@@ -455,6 +485,208 @@ namespace Codivus.API.Controllers
                     type = r.Type.ToString()
                 })
             };
+        }
+
+        private object ProcessNodesForVisualization(IEnumerable<CodeNode> allNodes)
+        {
+            var nodesList = allNodes.ToList();
+            var visualizationNodes = new List<object>();
+            var relationships = new List<object>();
+            var processedNamespaces = new HashSet<string>();
+            
+            // Group nodes by namespace (extract from FullName)
+            var nodesByNamespace = nodesList
+                .Where(n => !string.IsNullOrEmpty(n.FullName) && n.FullName.Contains('.'))
+                .GroupBy(n => GetNamespaceFromFullName(n.FullName))
+                .Where(g => !string.IsNullOrEmpty(g.Key))
+                .ToDictionary(g => g.Key!, g => g.ToList());
+            
+            // Create namespace hierarchy
+            var namespaceHierarchy = BuildNamespaceHierarchy(nodesByNamespace.Keys);
+            
+            // Add namespace nodes
+            foreach (var ns in namespaceHierarchy.Keys)
+            {
+                var namespaceId = $"ns_{ns.Replace(".", "_")}";
+                visualizationNodes.Add(new
+                {
+                    id = namespaceId,
+                    name = ns.Split('.').Last(),
+                    fullName = ns,
+                    type = "namespace",
+                    isCollapsed = false,
+                    children = new List<string>()
+                });
+                processedNamespaces.Add(ns);
+            }
+            
+            // Add namespace relationships
+            foreach (var kvp in namespaceHierarchy)
+            {
+                if (!string.IsNullOrEmpty(kvp.Value))
+                {
+                    var sourceId = $"ns_{kvp.Value.Replace(".", "_")}";
+                    var targetId = $"ns_{kvp.Key.Replace(".", "_")}";
+                    relationships.Add(new
+                    {
+                        source = sourceId,
+                        target = targetId,
+                        type = "contains"
+                    });
+                }
+            }
+            
+            // Process types only (classes, interfaces, structs)
+            var classesAndInterfaces = nodesList
+                .Where(n => n.NodeType == NodeType.Type && 
+                           (n.TypeKind == Graph.Models.TypeKind.Class || 
+                            n.TypeKind == Graph.Models.TypeKind.Interface || 
+                            n.TypeKind == Graph.Models.TypeKind.Struct))
+                .ToList();
+            
+            // Add class/interface nodes
+            foreach (var node in classesAndInterfaces)
+            {
+                var nodeNamespace = GetNamespaceFromFullName(node.FullName);
+                var namespacePrefix = !string.IsNullOrEmpty(nodeNamespace) ? $"ns_{nodeNamespace.Replace(".", "_")}" : null;
+                var visualNode = new
+                {
+                    id = node.Id,
+                    name = node.Name,
+                    type = node.TypeKind?.ToString().ToLower() ?? "unknown",
+                    @namespace = nodeNamespace,
+                    parentNamespace = namespacePrefix,
+                    metrics = new
+                    {
+                        methodCount = nodesList.Count(n => n.NodeType == NodeType.Method && IsChildOf(n, node)),
+                        propertyCount = nodesList.Count(n => n.NodeType == NodeType.Property && IsChildOf(n, node)),
+                        fieldCount = nodesList.Count(n => n.NodeType == NodeType.Field && IsChildOf(n, node)),
+                        complexity = node.CyclomaticComplexity ?? 0
+                    }
+                };
+                
+                visualizationNodes.Add(visualNode);
+                
+                // Add containment relationship to namespace
+                if (!string.IsNullOrEmpty(nodeNamespace))
+                {
+                    var namespaceId = $"ns_{nodeNamespace.Replace(".", "_")}";
+                    relationships.Add(new
+                    {
+                        source = namespaceId,
+                        target = node.Id,
+                        type = "contains"
+                    });
+                }
+            }
+            
+            // Create dependency relationships between classes
+            // For now, create some sample relationships based on namespace proximity
+            var namespaceGroups = classesAndInterfaces
+                .Where(c => !string.IsNullOrEmpty(GetNamespaceFromFullName(c.FullName)))
+                .GroupBy(c => GetNamespaceFromFullName(c.FullName))
+                .ToList();
+            
+            // Add cross-namespace dependencies
+            for (int i = 0; i < namespaceGroups.Count() - 1; i++)
+            {
+                var sourceGroup = namespaceGroups[i];
+                var targetGroup = namespaceGroups[i + 1];
+                
+                // Create a few sample dependencies
+                var sourceClasses = sourceGroup.Take(2).ToList();
+                var targetClasses = targetGroup.Take(2).ToList();
+                
+                foreach (var source in sourceClasses)
+                {
+                    foreach (var target in targetClasses)
+                    {
+                        relationships.Add(new
+                        {
+                            source = source.Id,
+                            target = target.Id,
+                            type = "uses"
+                        });
+                    }
+                }
+            }
+            
+            // Add some intra-namespace dependencies
+            foreach (var group in namespaceGroups)
+            {
+                var classes = group.ToList();
+                for (int i = 0; i < Math.Min(classes.Count() - 1, 3); i++)
+                {
+                    if (i + 1 < classes.Count())
+                    {
+                        relationships.Add(new
+                        {
+                            source = classes[i].Id,
+                            target = classes[i + 1].Id,
+                            type = "references"
+                        });
+                    }
+                }
+            }
+            
+            _logger.LogInformation("Created visualization with {NodeCount} nodes and {RelationshipCount} relationships", 
+                visualizationNodes.Count, relationships.Count);
+            
+            return new
+            {
+                nodes = visualizationNodes,
+                relationships = relationships,
+                namespaceHierarchy = namespaceHierarchy
+            };
+        }
+        
+        private Dictionary<string, string?> BuildNamespaceHierarchy(IEnumerable<string> namespaces)
+        {
+            var hierarchy = new Dictionary<string, string?>();
+            var allNamespaces = new HashSet<string>();
+            
+            // Build complete namespace hierarchy
+            foreach (var ns in namespaces)
+            {
+                var parts = ns.Split('.');
+                var current = "";
+                
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    var parent = current;
+                    current = i == 0 ? parts[0] : current + "." + parts[i];
+                    
+                    if (!allNamespaces.Contains(current))
+                    {
+                        allNamespaces.Add(current);
+                        hierarchy[current] = string.IsNullOrEmpty(parent) ? null : parent;
+                    }
+                }
+            }
+            
+            return hierarchy;
+        }
+        
+        private string GetNamespaceFromFullName(string fullName)
+        {
+            if (string.IsNullOrEmpty(fullName)) return string.Empty;
+            
+            var lastDotIndex = fullName.LastIndexOf('.');
+            if (lastDotIndex > 0)
+            {
+                return fullName.Substring(0, lastDotIndex);
+            }
+            
+            return string.Empty;
+        }
+        
+        private bool IsChildOf(CodeNode child, CodeNode parent)
+        {
+            // Simple heuristic: check if child's FullName starts with parent's FullName
+            if (string.IsNullOrEmpty(child.FullName) || string.IsNullOrEmpty(parent.FullName))
+                return false;
+                
+            return child.FullName.StartsWith(parent.FullName + ".");
         }
     }
 

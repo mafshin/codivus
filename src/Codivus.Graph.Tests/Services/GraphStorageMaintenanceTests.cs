@@ -27,11 +27,12 @@ namespace Codivus.Graph.Tests.Services
             _configuration = new GraphConfiguration
             {
                 Enabled = false, // Disable actual connections for testing
-                JanusGraph = new JanusGraphSettings
+                Neo4j = new Neo4jSettings
                 {
-                    Host = "localhost",
-                    Port = 8182,
-                    ConnectionPoolSize = 5
+                    Uri = "bolt://localhost:7687",
+                    Username = "neo4j",
+                    Password = "pass12345678",
+                    MaxConnectionPoolSize = 5
                 }
             };
             
